@@ -8,38 +8,40 @@
     </button>
   </section>
 
-    <!-- Events List -->
-    <div class="events-section">
-      <div class="section-header">
-        <h3>Your Events</h3>
-        <div class="section-actions">
-          <button 
-            @click="loadEvents" 
-            class="btn btn-refresh"
-            :disabled="loading"
-          >
-            {{ loading ? 'Loading...' : 'Refresh' }}
-          </button>
-        </div>
+  <!-- Loading State -->
+  <div v-if="loading" class="loading">
+    <div class="loading-spinner"></div>
+    <p>Loading your events...</p>
+  </div>
+
+  <!-- No Events State -->
+  <div v-else-if="userEvents.length === 0" class="no-events">
+    <div class="no-events-content">
+      <span class="no-events-icon">📅</span>
+      <h3>No Events Created</h3>
+      <p>You haven't created any events yet.</p>
+      <button class="btn btn-primary" @click="openEventModal()">
+        Create Your First Event
+      </button>
+    </div>
+  </div>
+
+  <!-- Events List -->
+  <div v-else class="events-list">
+    <div class="section-header">
+      <h3>Your Events</h3>
+      <div class="section-actions">
+        <button 
+          @click="loadEvents" 
+          class="btn btn-refresh"
+          :disabled="loading"
+        >
+          {{ loading ? 'Loading...' : 'Refresh' }}
+        </button>
       </div>
+    </div>
       
-      <div v-if="loading" class="loading">
-        <div class="loading-spinner"></div>
-        <p>Loading your events...</p>
-      </div>
-      
-      <div v-else-if="userEvents.length === 0" class="no-events">
-        <div class="no-events-content">
-          <span class="no-events-icon">📅</span>
-          <h3>No Events Created</h3>
-          <p>You haven't created any events yet.</p>
-          <button class="btn btn-primary" @click="openEventModal()">
-            Create Your First Event
-          </button>
-        </div>
-      </div>
-      
-      <div v-else class="events-grid">
+      <div class="events-grid">
         <div 
           v-for="event in userEvents" 
           :key="event._id" 
@@ -104,7 +106,7 @@
         <h3>Events You're Interested In</h3>
         <div class="section-actions">
           <button 
-            @click="loadInterestedEvents" 
+            @click="refreshInterestedEvents" 
             class="btn btn-refresh"
             :disabled="loadingInterested"
           >
@@ -123,13 +125,22 @@
           <span class="no-events-icon">❤️</span>
           <h3>No Interested Events</h3>
           <p>You haven't marked any events as interested yet.</p>
-          <router-link to="/discovery" class="btn btn-primary">
-            Discover Events
-          </router-link>
+          <div class="action-buttons">
+            <router-link to="/discovery" class="btn btn-primary">
+              Discover Events
+            </router-link>
+            <button 
+              @click="refreshInterestedEvents" 
+              class="btn btn-secondary"
+              :disabled="loadingInterested"
+            >
+              {{ loadingInterested ? 'Loading...' : 'Retry Loading' }}
+            </button>
+          </div>
         </div>
       </div>
       
-      <div v-else class="events-grid">
+      <div v-else class="events-list">
         <div 
           v-for="event in interestedEvents" 
           :key="event._id" 
@@ -138,7 +149,7 @@
           <div class="event-header">
             <div class="event-title-section">
               <h3 class="event-title">{{ event.name }}</h3>
-              <div class="event-status" :class="getStatusClass(event.status)">
+              <div class="event-status" :class="statusClass(event.status)">
                 {{ event.status }}
               </div>
             </div>
@@ -354,29 +365,67 @@ export default {
     },
 
     async loadInterestedEvents() {
+      console.log('🚀 loadInterestedEvents STARTING')
+      console.log('Current loadingInterested state:', this.loadingInterested)
+      console.log('Current interestedEvents length:', this.interestedEvents.length)
+      
       this.loadingInterested = true
+      console.log('✅ Set loadingInterested to true')
+      
       try {
-        const response = await interestAPI.getItemInterests(this.currentUser)
-        const interestedItems = response.data || []
+        console.log('📡 Step 1: Getting user interests...')
+        // Get user's item interests (event IDs)
+        const interestsResponse = await interestAPI.getItemInterests(this.currentUser)
+        console.log('📡 Interests response:', interestsResponse)
         
-        // Get event details for each interested item
-        const eventPromises = interestedItems.map(item => 
-          eventAPI.getEventById(item.item)
+        const interestedItems = interestsResponse.data || []
+        console.log('📡 Interested items:', interestedItems)
+        
+        if (interestedItems.length === 0) {
+          console.log('📡 No interested items found, setting empty array')
+          this.interestedEvents = []
+          this.loadingInterested = false
+          console.log('✅ Set loadingInterested to false (early return)')
+          return
+        }
+
+        console.log('📡 Step 2: Getting event details...')
+        // Get each interested event by ID in parallel
+        const interestedEventIds = interestedItems.map(item => item.item)
+        console.log('📡 Event IDs to fetch:', interestedEventIds)
+        
+        const eventPromises = interestedEventIds.map(eventId => 
+          eventAPI.getEventById(eventId).catch(error => {
+            console.warn(`Failed to fetch event ${eventId}:`, error)
+            return null
+          })
         )
+        
+        console.log('📡 Making parallel API calls...')
         const eventResponses = await Promise.all(eventPromises)
+        console.log('📡 Event responses received:', eventResponses)
         
+        // Filter out null responses and extract events
         this.interestedEvents = eventResponses
+          .filter(response => response !== null && response.data)
           .map(response => response.data[0])
-          .filter(event => event) // Filter out any null/undefined events
         
+        console.log('📡 Final interestedEvents:', this.interestedEvents)
+        console.log('📡 Final interestedEvents length:', this.interestedEvents.length)
+
+        // If no events were successfully loaded, use mock data as fallback
         if (this.interestedEvents.length === 0) {
+          console.log('📡 No events loaded, using mock data')
           this.interestedEvents = this.getMockInterestedEvents()
         }
       } catch (error) {
-        console.error('Error loading interested events:', error)
+        console.error('❌ Error loading interested events:', error)
         this.interestedEvents = this.getMockInterestedEvents()
       } finally {
+        console.log('🏁 FINALLY BLOCK - setting loadingInterested to false')
         this.loadingInterested = false
+        console.log('✅ Final loadingInterested state:', this.loadingInterested)
+        console.log('✅ Final interestedEvents length:', this.interestedEvents.length)
       }
     },
 
@@ -596,6 +645,12 @@ export default {
           status: 'upcoming'
         }
       ]
+    },
+
+    // Method to manually refresh interested events
+    async refreshInterestedEvents() {
+      console.log('Manually refreshing interested events...')
+      await this.loadInterestedEvents()
     }
   }
 }
@@ -618,6 +673,10 @@ export default {
   color: #6b7280;
   font-size: 1.125rem;
   margin-bottom: 2rem;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
 }
 
 .btn-large {
@@ -657,6 +716,29 @@ export default {
 
 .btn-refresh:hover:not(:disabled) {
   background: #369870;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.btn-secondary {
+  background: #6b7280;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #4b5563;
 }
 
 .btn-refresh:disabled {
@@ -715,7 +797,14 @@ export default {
 
 .events-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 2rem;
+  max-width: none;
+}
+
+.events-list {
+  display: flex;
+  flex-direction: column;
   gap: 2rem;
 }
 

@@ -61,7 +61,10 @@ const router = createRouter({
 
 // Route guards
 router.beforeEach((to, from, next) => {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, initAuth } = useAuth()
+  
+  // Initialize auth state from localStorage
+  initAuth()
   
   // Check if route requires authentication
   if (to.meta.requiresAuth && !isAuthenticated.value) {

@@ -19,7 +19,6 @@
             </div>
             <div class="user-info">
               <h4>{{ currentUsername }}</h4>
-              <p class="user-email">{{ currentEmail }}</p>
               <p class="member-since">Member since {{ memberSince }}</p>
             </div>
           </div>
@@ -256,7 +255,6 @@ export default {
   },
   data() {
     return {
-      currentEmail: 'demo@example.com',
       memberSince: 'January 2024',
       interests: ['Technology', 'Vue.js', 'Machine Learning', 'Coffee'],
       stats: {
@@ -300,7 +298,18 @@ export default {
         const response = await interestAPI.getPersonalInterests(
           this.user?.id || this.user?._id || 'user123'
         )
-        this.interests = response.data || []
+        const interestsData = response.data || []
+        
+        // Extract interest names if they're objects, otherwise use as strings
+        this.interests = interestsData.map(interest => {
+          if (typeof interest === 'string') {
+            return interest
+          } else if (interest && typeof interest === 'object') {
+            // If it's an object, try to get the name/tag field
+            return interest.name || interest.tag || interest.interest || interest
+          }
+          return interest
+        })
       } catch (error) {
         console.error('Error loading interests:', error)
         // Keep mock data on error
@@ -497,16 +506,20 @@ export default {
 .page-header p {
   color: #6b7280;
   font-size: 1.125rem;
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.6;
 }
 
 .profile-content {
-  max-width: 100%;
+  max-width: none;
 }
 
 .profile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 2rem;
+  max-width: none;
 }
 
 .profile-card {
@@ -567,11 +580,6 @@ export default {
   color: #2c3e50;
   font-size: 1.5rem;
   font-weight: 600;
-  margin: 0 0 0.5rem 0;
-}
-
-.user-email {
-  color: #6b7280;
   margin: 0 0 0.5rem 0;
 }
 

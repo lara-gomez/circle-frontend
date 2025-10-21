@@ -1,8 +1,8 @@
 <template>
   <!-- Welcome Section -->
   <section class="welcome-section">
-    <h2>Discover Events That Match Your Interests</h2>
-    <p>Find local events and connect with friends who share your passions.</p>
+    <h2>Welcome to Circle!</h2>
+    <p>Discover local events that match your interests and connect with your community.</p>
   </section>
 
   <!-- Recent Event Reminder (Small) -->
@@ -19,38 +19,42 @@
     </div>
   </section>
 
-  <!-- Recommended Events Section -->
+  <!-- Events Section -->
   <section class="events-section">
     <div class="section-header">
       <h3>Recommended for You</h3>
-      <div class="section-actions">
-        <button 
-          @click="refreshEvents" 
-          class="btn btn-refresh"
-          :disabled="loading"
-        >
-          {{ loading ? 'Loading...' : 'Refresh' }}
-        </button>
-      </div>
+      <button 
+        @click="refreshEvents" 
+        class="btn btn-refresh"
+        :disabled="loading"
+      >
+        {{ loading ? 'Loading...' : 'Refresh' }}
+      </button>
     </div>
-    
+
+    <!-- Loading State -->
     <div v-if="loading" class="loading">
       <div class="loading-spinner"></div>
       <p>Loading recommended events...</p>
     </div>
-    
+
+    <!-- No Events State -->
     <div v-else-if="recommendedEvents.length === 0" class="no-events">
+      <span class="no-events-icon">📅</span>
+      <h3>No Events Available</h3>
       <p>No events available at the moment.</p>
       <p class="subtitle">Check back later for new events!</p>
     </div>
-    
+
+    <!-- Events Grid -->
     <div v-else class="events-grid">
       <EventCard
         v-for="event in recommendedEvents"
         :key="event._id"
         :event="event"
         :current-user="currentUser"
-        :friends-attending="getFriendsAttending(event._id)"
+        :friends-attending="friendsAttendingMap[event._id] || []"
+        :is-interested="isUserInterested(event._id)"
         @interest-changed="handleInterestChange"
         @bookmark-changed="handleBookmarkChange"
       />
@@ -60,7 +64,7 @@
 
 <script>
 import EventCard from '../components/EventCard.vue'
-import { eventAPI, friendingAPI, reviewingAPI } from '../api/services.js'
+import { eventAPI, friendingAPI, reviewingAPI, interestAPI } from '../api/services.js'
 import { useAuth } from '../composables/useAuth.js'
 
 export default {
@@ -83,7 +87,9 @@ export default {
       recommendedEvents: [],
       friends: [],
       recentEvent: null,
-      loading: true
+      loading: true,
+      friendsAttendingMap: {},
+      userInterests: []
     }
   },
   computed: {
@@ -119,9 +125,17 @@ export default {
         if (this.recommendedEvents.length === 0) {
           this.recommendedEvents = this.getMockEvents()
         }
+
+        // Load friends attending data for each event
+        await this.loadFriendsAttendingData()
+        
+        // Load user's current interests to initialize event cards
+        await this.loadUserInterests()
       } catch (error) {
         console.error('Error loading events:', error)
         this.recommendedEvents = this.getMockEvents()
+        await this.loadFriendsAttendingData()
+        await this.loadUserInterests()
       } finally {
         this.loading = false
       }
@@ -134,6 +148,95 @@ export default {
       } catch (error) {
         console.error('Error loading friends:', error)
         this.friends = this.getMockFriends()
+      }
+    },
+
+    async loadFriendsAttendingData() {
+      // OPTIMIZED: This function now fetches friends and their interests efficiently
+      // Instead of N×M API calls (N events × M friends), it makes only 1 + M calls:
+      // - 1 call to get all friends
+      // - M parallel calls to get each friend's interests
+      // Then builds an efficient in-memory mapping of eventId → friends attending
+      try {
+        // Step 1: Get all friends once
+        const friendsResponse = await friendingAPI.getFriends(this.currentUser)
+        const allFriends = friendsResponse.data || []
+        
+        if (allFriends.length === 0) {
+          // Initialize empty map for all events
+          this.friendsAttendingMap = {}
+          this.recommendedEvents.forEach(event => {
+            this.friendsAttendingMap[event._id] = []
+          })
+          return
+        }
+
+        // Step 2: Get all friends' interests in parallel (one call per friend)
+        const friendInterestsPromises = allFriends.map(async (friend) => {
+          try {
+            const friendInterestsResponse = await interestAPI.getItemInterests(friend.id || friend._id)
+            const interests = friendInterestsResponse.data || []
+            return {
+              friend: {
+                id: friend.id || friend._id,
+                username: friend.username || friend.name
+              },
+              interestedEvents: interests.map(interest => interest.item)
+            }
+          } catch (error) {
+            console.error(`Error getting interests for friend ${friend.username}:`, error)
+            return {
+              friend: {
+                id: friend.id || friend._id,
+                username: friend.username || friend.name
+              },
+              interestedEvents: []
+            }
+          }
+        })
+
+        const friendInterestsResults = await Promise.all(friendInterestsPromises)
+
+        // Step 3: Build efficient mapping of eventId → friends attending
+        this.friendsAttendingMap = {}
+        
+        // Initialize all events with empty arrays
+        this.recommendedEvents.forEach(event => {
+          this.friendsAttendingMap[event._id] = []
+        })
+
+        // Build the mapping efficiently
+        friendInterestsResults.forEach(({ friend, interestedEvents }) => {
+          interestedEvents.forEach(eventId => {
+            if (this.friendsAttendingMap.hasOwnProperty(eventId)) {
+              this.friendsAttendingMap[eventId].push(friend)
+            }
+          })
+        })
+
+      } catch (error) {
+        console.error('Error loading friends attending data:', error)
+        // Fallback to mock data
+        await this.loadMockFriendsAttendingData()
+      }
+    },
+
+    async loadMockFriendsAttendingData() {
+      // Initialize with mock data for all events
+      this.friendsAttendingMap = {}
+      
+      this.recommendedEvents.forEach(event => {
+        this.friendsAttendingMap[event._id] = this.getMockFriendsAttending(event._id)
+      })
+    },
+
+    async loadUserInterests() {
+      try {
+        const response = await interestAPI.getItemInterests(this.currentUser)
+        this.userInterests = response.data || []
+      } catch (error) {
+        console.error('Error loading user interests:', error)
+        this.userInterests = []
       }
     },
 
@@ -225,7 +328,61 @@ export default {
       }
     },
     
-    getFriendsAttending(eventId) {
+    async getFriendsAttending(eventId) {
+      // This function is now primarily used as a fallback or for single event queries
+      // The main optimization is in loadFriendsAttendingData()
+      try {
+        // Get all friends
+        const friendsResponse = await friendingAPI.getFriends(this.currentUser)
+        const allFriends = friendsResponse.data || []
+        
+        if (allFriends.length === 0) {
+          return []
+        }
+
+        // Get all friends' interests in parallel
+        const friendInterestsPromises = allFriends.map(async (friend) => {
+          try {
+            const friendInterestsResponse = await interestAPI.getItemInterests(friend.id || friend._id)
+            const interests = friendInterestsResponse.data || []
+            return {
+              friend: {
+                id: friend.id || friend._id,
+                username: friend.username || friend.name
+              },
+              interestedEvents: interests.map(interest => interest.item)
+            }
+          } catch (error) {
+            console.error(`Error getting interests for friend ${friend.username}:`, error)
+            return {
+              friend: {
+                id: friend.id || friend._id,
+                username: friend.username || friend.name
+              },
+              interestedEvents: []
+            }
+          }
+        })
+
+        const friendInterestsResults = await Promise.all(friendInterestsPromises)
+
+        // Find friends interested in this specific event
+        const friendsInterestedInEvent = []
+        friendInterestsResults.forEach(({ friend, interestedEvents }) => {
+          if (interestedEvents.includes(eventId)) {
+            friendsInterestedInEvent.push(friend)
+          }
+        })
+
+        return friendsInterestedInEvent
+      } catch (error) {
+        console.error('Error getting friends attending:', error)
+        // Fallback to mock data
+        return this.getMockFriendsAttending(eventId)
+      }
+    },
+
+    getMockFriendsAttending(eventId) {
       // Mock logic to determine which friends are attending
       // In a real app, this would be based on actual attendance data
       const attendingFriends = []
@@ -238,7 +395,7 @@ export default {
       if (Math.random() > 0.8) {
         attendingFriends.push(this.friends[2])
       }
-      
+
       // Return friends with proper structure for EventCard
       return attendingFriends.map(friend => ({
         id: friend.id || friend._id,
@@ -250,9 +407,40 @@ export default {
       await this.loadRecommendedEvents()
     },
     
-    handleInterestChange(eventId, isInterested) {
+    isUserInterested(eventId) {
+      return this.userInterests.some(interest => interest.item === eventId)
+    },
+
+    async handleInterestChange(eventId, isInterested) {
       console.log(`Event ${eventId} interest changed:`, isInterested)
-      // Update local state or trigger API call
+      
+      try {
+        if (isInterested) {
+          // Add interest to the event
+          await interestAPI.addItemInterest(this.currentUser, eventId)
+          console.log(`Added interest for event ${eventId}`)
+          
+          // Update local state
+          this.userInterests.push({ item: eventId })
+        } else {
+          // Remove interest from the event
+          await interestAPI.removeItemInterest(this.currentUser, eventId)
+          console.log(`Removed interest for event ${eventId}`)
+          
+          // Update local state
+          this.userInterests = this.userInterests.filter(interest => interest.item !== eventId)
+        }
+        
+        // Refresh friends attending data since user's interest changed
+        await this.loadFriendsAttendingData()
+        
+      } catch (error) {
+        console.error('Error updating interest:', error)
+        alert('Failed to update interest. Please try again.')
+        
+        // Reload user interests to get correct state
+        await this.loadUserInterests()
+      }
     },
     
     handleBookmarkChange(eventId, isBookmarked) {
@@ -280,8 +468,9 @@ export default {
 .welcome-section p {
   color: #6b7280;
   font-size: 1.125rem;
-  max-width: 600px;
+  max-width: 700px;
   margin: 0 auto;
+  line-height: 1.6;
 }
 
 .events-section {
@@ -357,8 +546,9 @@ export default {
 
 .events-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+  max-width: none;
 }
 
 /* Recent Event Reminder Styles */

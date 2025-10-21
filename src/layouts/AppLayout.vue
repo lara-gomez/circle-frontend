@@ -162,9 +162,10 @@ export default {
 }
 
 .main-content {
-  max-width: 1200px;
+  width: 90%;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2rem 1rem;
 }
 
 @media (max-width: 768px) {

@@ -71,7 +71,6 @@
 
 <script>
 import FriendList from './FriendList.vue'
-import { interestAPI } from '../api/services.js'
 
 export default {
   name: 'EventCard',
@@ -90,11 +89,14 @@ export default {
     friendsAttending: {
       type: Array,
       default: () => []
+    },
+    isInterested: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
     return {
-      isInterested: false,
       loading: false
     }
   },
@@ -133,22 +135,12 @@ export default {
       if (this.loading) return
       
       this.loading = true
-      try {
-        if (this.isInterested) {
-          await interestAPI.removeItemInterest(this.currentUser, this.event._id)
-          this.isInterested = false
-        } else {
-          await interestAPI.addItemInterest(this.currentUser, this.event._id)
-          this.isInterested = true
-        }
-        this.$emit('interest-changed', this.event._id, this.isInterested)
-      } catch (error) {
-        console.error('Error toggling interest:', error)
-        // For demo purposes, toggle locally on error
-        this.isInterested = !this.isInterested
-      } finally {
-        this.loading = false
-      }
+      const newInterestState = !this.isInterested
+      
+      // Emit the interest change to parent component
+      this.$emit('interest-changed', this.event._id, newInterestState)
+      
+      this.loading = false
     },
     
 
@@ -163,12 +155,6 @@ export default {
     }
   },
   
-  mounted() {
-    // Check if user is already interested in this event
-    // This would typically be done by checking the user's interests
-    // For demo purposes, we'll set some mock data
-    this.isInterested = Math.random() > 0.7
-  }
 }
 </script>
 

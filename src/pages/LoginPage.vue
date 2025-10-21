@@ -1,11 +1,13 @@
 <template>
   <div class="login-page">
     <div class="login-container">
-      <div class="login-header">
+      <!-- Page Header -->
+      <section class="page-header">
         <h1 class="brand-title">Circle</h1>
         <p class="brand-subtitle">Find your community through local events</p>
-      </div>
+      </section>
 
+      <!-- Login Form Container -->
       <div class="login-form-container">
         <div class="form-tabs">
           <button 
@@ -33,7 +35,7 @@
               class="form-input"
               placeholder="Enter your username"
               required
-              :disabled="loading"
+              :disabled="authLoading"
             />
           </div>
 
@@ -45,7 +47,7 @@
               class="form-input"
               placeholder="Enter your password"
               required
-              :disabled="loading"
+              :disabled="authLoading"
             />
           </div>
 
@@ -56,9 +58,9 @@
           <button 
             type="submit" 
             class="btn btn-primary btn-large"
-            :disabled="loading || !isFormValid"
+            :disabled="authLoading || !isFormValid"
           >
-            {{ loading ? 'Please wait...' : (isLoginMode ? 'Sign In' : 'Sign Up') }}
+            {{ authLoading ? 'Please wait...' : (isLoginMode ? 'Sign In' : 'Sign Up') }}
           </button>
         </form>
 
@@ -82,14 +84,17 @@
 </template>
 
 <script>
-import { authAPI } from '../api/services.js'
+import { useAuth } from '../composables/useAuth.js'
 
 export default {
   name: 'LoginPage',
+  setup() {
+    const { login, register, loading: authLoading } = useAuth()
+    return { login, register, authLoading }
+  },
   data() {
     return {
       isLoginMode: true,
-      loading: false,
       error: '',
       form: {
         username: '',
@@ -106,32 +111,22 @@ export default {
     async handleSubmit() {
       if (!this.isFormValid) return
 
-      this.loading = true
       this.error = ''
 
       try {
-        let response
         if (this.isLoginMode) {
           // Sign in
-          response = await authAPI.authenticate(this.form.username, this.form.password)
+          await this.login(this.form.username, this.form.password)
         } else {
           // Sign up
-          response = await authAPI.register(this.form.username, this.form.password)
+          await this.register(this.form.username, this.form.password)
         }
 
-        const user = response.data.user
-        
-        // Store user data in localStorage
-        localStorage.setItem('user', JSON.stringify(user))
-        localStorage.setItem('isAuthenticated', 'true')
-
-        // Redirect to discovery page
+        // Redirect to discovery page after successful authentication
         this.$router.push('/discovery')
       } catch (error) {
         console.error('Authentication error:', error)
         this.error = error.response?.data?.error || 'An error occurred. Please try again.'
-      } finally {
-        this.loading = false
       }
     },
 
@@ -154,38 +149,40 @@ export default {
 <style scoped>
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #f8fafc;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: 2rem;
 }
 
 .login-container {
   background: white;
-  border-radius: 16px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   width: 100%;
-  max-width: 400px;
+  max-width: 600px;
   overflow: hidden;
+  border: 1px solid #e5e7eb;
 }
 
-.login-header {
-  background: linear-gradient(135deg, #42b883, #369870);
-  color: white;
-  padding: 2rem;
+.page-header {
   text-align: center;
+  padding: 3rem 2rem 2rem;
+  background: linear-gradient(135deg, #42b883 0%, #369870 100%);
+  color: white;
 }
 
-.brand-title {
+.page-header .brand-title {
+  color: white;
   font-size: 2.5rem;
-  font-weight: 700;
-  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
 }
 
-.brand-subtitle {
-  font-size: 1rem;
-  opacity: 0.9;
+.page-header .brand-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.125rem;
   margin: 0;
 }
 
@@ -196,7 +193,7 @@ export default {
 .form-tabs {
   display: flex;
   margin-bottom: 2rem;
-  background: #f8fafc;
+  background: #f1f5f9;
   border-radius: 8px;
   padding: 4px;
 }
@@ -206,11 +203,12 @@ export default {
   padding: 0.75rem 1rem;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: #64748b;
   font-weight: 500;
   cursor: pointer;
   border-radius: 6px;
   transition: all 0.2s ease;
+  font-size: 0.875rem;
 }
 
 .tab-button.active {
@@ -220,7 +218,7 @@ export default {
 }
 
 .tab-button:hover:not(.active) {
-  color: #374151;
+  color: #334155;
 }
 
 .login-form {
@@ -236,15 +234,17 @@ export default {
   margin-bottom: 0.5rem;
   font-weight: 500;
   color: #374151;
+  font-size: 0.875rem;
 }
 
 .form-input {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font-size: 1rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: white;
 }
 
 .form-input:focus {
@@ -256,13 +256,18 @@ export default {
 .form-input:disabled {
   background-color: #f9fafb;
   cursor: not-allowed;
+  color: #9ca3af;
+}
+
+.form-input::placeholder {
+  color: #9ca3af;
 }
 
 .error-message {
   background: #fee2e2;
   color: #dc2626;
-  padding: 0.75rem;
-  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
   font-size: 0.875rem;
   margin-bottom: 1rem;
   border: 1px solid #fecaca;
@@ -288,11 +293,19 @@ export default {
 
 .btn-primary:hover:not(:disabled) {
   background: #369870;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(66, 184, 131, 0.3);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-primary:disabled {
   background: #9ca3af;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-large {
@@ -315,10 +328,38 @@ export default {
   text-decoration: underline;
   padding: 0;
   font-size: inherit;
+  transition: color 0.2s ease;
 }
 
 .link-button:hover {
   color: #369870;
+}
+
+@media (max-width: 768px) {
+  .login-page {
+    padding: 1rem;
+  }
+  
+  .login-container {
+    max-width: 100%;
+    border-radius: 8px;
+  }
+  
+  .page-header {
+    padding: 2rem 1.5rem 1.5rem;
+  }
+  
+  .page-header .brand-title {
+    font-size: 2rem;
+  }
+  
+  .page-header .brand-subtitle {
+    font-size: 1rem;
+  }
+  
+  .login-form-container {
+    padding: 1.5rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -326,20 +367,16 @@ export default {
     padding: 0.5rem;
   }
   
-  .login-container {
-    border-radius: 12px;
+  .page-header {
+    padding: 1.5rem 1rem;
   }
   
-  .login-header {
-    padding: 1.5rem;
-  }
-  
-  .brand-title {
-    font-size: 2rem;
+  .page-header .brand-title {
+    font-size: 1.75rem;
   }
   
   .login-form-container {
-    padding: 1.5rem;
+    padding: 1rem;
   }
 }
 </style>
