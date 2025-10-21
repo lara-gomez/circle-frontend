@@ -1,0 +1,27 @@
+{
+  "name": "circle-frontend",
+  "version": "1.0.0",
+  "description": "A Vue.js frontend application for Circle",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite preview"
+  },
+  "keywords": [
+    "vue",
+    "frontend",
+    "javascript",
+    "vite"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@vitejs/plugin-vue": "^4.6.2",
+    "axios": "^1.12.2",
+    "vite": "^4.5.3",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.3"
+  }
+}
