@@ -171,7 +171,7 @@
               </div>
               <div class="info-item">
                 <span class="icon">👤</span>
-                <span>{{ event.organizer }}</span>
+                <span>{{ getOrganizerUsername(event.organizer) }}</span>
               </div>
             </div>
             
@@ -306,6 +306,7 @@ export default {
       editingEvent: null,
       saving: false,
       processingInterest: null,
+      organizerUsernames: {}, // Cache for organizer usernames
       eventForm: {
         name: '',
         date: '',
@@ -354,6 +355,9 @@ export default {
         console.log('EventManagerPage - Events response:', response)
         this.userEvents = response.data || []
         
+        // Load organizer usernames for user events
+        await this.loadOrganizerUsernames(this.userEvents)
+        
         // No mock data fallback - only show real events
       } catch (error) {
         console.error('Error loading events:', error)
@@ -374,7 +378,9 @@ export default {
       
       try {
         // Get user's item interests (event IDs)
+        console.log('EventManagerPage - Getting interests for user:', this.currentUser)
         const interestsResponse = await interestAPI.getItemInterests(this.currentUser)
+        console.log('EventManagerPage - Interests response:', interestsResponse)
         
         const interestedItems = interestsResponse.data || []
         
@@ -399,12 +405,28 @@ export default {
         const eventResponses = await Promise.all(eventPromises)
         
         // Filter out null responses and extract events
-        this.interestedEvents = eventResponses
+        const allInterestedEvents = eventResponses
           .filter(response => response !== null && response.data && response.data[0])
           .map(response => response.data[0])
           .filter(event => event && event._id) // Ensure each event has an _id
 
-        console.log('📡 Filtered interested events:', this.interestedEvents)
+        // Filter out completed events - only show upcoming/in-progress events
+        const now = new Date()
+        this.interestedEvents = allInterestedEvents.filter(event => {
+          if (!event.date || !event.duration) return true // Keep events with missing data
+          
+          const eventStartTime = new Date(event.date)
+          const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
+          
+          // Only show events that haven't ended yet
+          return eventEndTime > now
+        })
+
+        console.log('📡 All interested events:', allInterestedEvents.length)
+        console.log('📡 Upcoming/interested events (filtered):', this.interestedEvents.length)
+
+        // Load organizer usernames for interested events
+        await this.loadOrganizerUsernames(this.interestedEvents)
 
         // No mock data fallback - only show real events
       } catch (error) {
@@ -486,6 +508,37 @@ export default {
         'status-cancelled': status === 'cancelled',
         'status-completed': status === 'completed'
       }
+    },
+
+    async loadOrganizerUsernames(events) {
+      const uniqueOrganizers = [...new Set(events.map(event => event.organizer))]
+      
+      for (const organizerId of uniqueOrganizers) {
+        if (!this.organizerUsernames[organizerId]) {
+          try {
+            const { authAPI } = await import('../api/services.js')
+            const response = await authAPI.getUsername(organizerId)
+            
+            // Handle different response formats
+            if (response.data) {
+              if (Array.isArray(response.data)) {
+                this.organizerUsernames[organizerId] = response.data[0]?.username || response.data[0] || organizerId
+              } else if (typeof response.data === 'object' && response.data.username) {
+                this.organizerUsernames[organizerId] = response.data.username
+              } else {
+                this.organizerUsernames[organizerId] = response.data
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching organizer username:', error)
+            this.organizerUsernames[organizerId] = organizerId // Fallback to ID
+          }
+        }
+      }
+    },
+
+    getOrganizerUsername(organizerId) {
+      return this.organizerUsernames[organizerId] || organizerId
     },
 
     openEventModal(event = null) {

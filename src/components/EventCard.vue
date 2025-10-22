@@ -160,8 +160,20 @@ export default {
         // Import the authAPI here to avoid circular dependencies
         const { authAPI } = await import('../api/services.js')
         const response = await authAPI.getUsername(this.event.organizer)
-        // Extract username from the response object
-        this.organizerUsername = response.data?.username || response.data
+        
+        // Handle different response formats
+        if (response.data) {
+          if (Array.isArray(response.data)) {
+            // If response.data is an array, get the first element
+            this.organizerUsername = response.data[0]?.username || response.data[0]
+          } else if (typeof response.data === 'object' && response.data.username) {
+            // If response.data is an object with username property
+            this.organizerUsername = response.data.username
+          } else {
+            // If response.data is a string
+            this.organizerUsername = response.data
+          }
+        }
       } catch (error) {
         console.error('Error fetching organizer username:', error)
         // Keep organizerUsername as null, will fallback to showing user ID

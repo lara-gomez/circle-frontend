@@ -48,7 +48,7 @@
             </div>
             <div class="info-item">
               <span class="icon">👤</span>
-              <span>{{ event.organizer }}</span>
+              <span>{{ getOrganizerUsername(event.organizer) }}</span>
             </div>
             <div class="info-item">
               <span class="icon">⏰</span>
@@ -184,6 +184,7 @@ export default {
       showReviewModal: false,
       editingEvent: null,
       saving: false,
+      organizerUsernames: {}, // Cache for organizer usernames
       reviewForm: {
         rating: 0,
         entry: ''
@@ -192,7 +193,7 @@ export default {
   },
   computed: {
     currentUser() {
-      return this.user?.id || this.user?._id || 'user123'
+      return this.user?.id || this.user?._id || this.user || 'user123'
     }
   },
   async mounted() {
@@ -216,8 +217,11 @@ export default {
       this.loading = true
       try {
         // Get user's interested events (same logic as EventManagerPage)
+        console.log('EventHistoryPage - Getting interests for user:', this.currentUser)
         const interestsResponse = await interestAPI.getItemInterests(this.currentUser)
+        console.log('EventHistoryPage - Interests response:', interestsResponse)
         const interestedItems = interestsResponse.data || []
+        console.log('EventHistoryPage - Interested items:', interestedItems)
         
         if (interestedItems.length === 0) {
           this.pastEvents = []
@@ -286,6 +290,9 @@ export default {
           review: reviewMap[event._id] || null
         })).sort((a, b) => new Date(b.date) - new Date(a.date))
         
+        // Load organizer usernames for past events
+        await this.loadOrganizerUsernames(this.pastEvents)
+        
         // No mock data fallback - only show real events
       } catch (error) {
         console.error('Error loading past events:', error)
@@ -296,6 +303,36 @@ export default {
       }
     },
 
+    async loadOrganizerUsernames(events) {
+      const uniqueOrganizers = [...new Set(events.map(event => event.organizer))]
+      
+      for (const organizerId of uniqueOrganizers) {
+        if (!this.organizerUsernames[organizerId]) {
+          try {
+            const { authAPI } = await import('../api/services.js')
+            const response = await authAPI.getUsername(organizerId)
+            
+            // Handle different response formats
+            if (response.data) {
+              if (Array.isArray(response.data)) {
+                this.organizerUsernames[organizerId] = response.data[0]?.username || response.data[0] || organizerId
+              } else if (typeof response.data === 'object' && response.data.username) {
+                this.organizerUsernames[organizerId] = response.data.username
+              } else {
+                this.organizerUsernames[organizerId] = response.data
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching organizer username:', error)
+            this.organizerUsernames[organizerId] = organizerId // Fallback to ID
+          }
+        }
+      }
+    },
+
+    getOrganizerUsername(organizerId) {
+      return this.organizerUsernames[organizerId] || organizerId
+    },
 
     formatDate(dateString) {
       const date = new Date(dateString)
