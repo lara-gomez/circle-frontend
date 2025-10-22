@@ -43,7 +43,7 @@
       
       <div class="events-grid">
         <div 
-          v-for="event in userEvents" 
+          v-for="event in userEvents.filter(e => e && e._id)" 
           :key="event._id" 
           class="event-manager-card"
         >
@@ -52,8 +52,8 @@
               <h3 class="event-title">{{ event.name }}</h3>
               <div class="event-date">{{ formatDate(event.date) }}</div>
             </div>
-            <div class="event-status" :class="statusClass(event.status)">
-              {{ event.status }}
+            <div class="event-status" :class="getStatusClass(event)">
+              {{ getEventStatus(event) }}
             </div>
           </div>
 
@@ -85,7 +85,7 @@
             <button 
               @click="cancelEvent(event)" 
               class="btn btn-cancel"
-              v-if="event.status === 'upcoming'"
+              v-if="getEventStatus(event) === 'upcoming'"
             >
               Cancel
             </button>
@@ -142,15 +142,15 @@
       
       <div v-else class="events-list">
         <div 
-          v-for="event in interestedEvents" 
+          v-for="event in interestedEvents.filter(e => e && e._id)" 
           :key="event._id" 
           class="event-manager-card interested-event"
         >
           <div class="event-header">
             <div class="event-title-section">
               <h3 class="event-title">{{ event.name }}</h3>
-              <div class="event-status" :class="statusClass(event.status)">
-                {{ event.status }}
+              <div class="event-status" :class="getStatusClass(event)">
+                {{ getEventStatus(event) }}
               </div>
             </div>
           </div>
@@ -317,7 +317,7 @@ export default {
   },
   computed: {
     currentUser() {
-      return this.user?.id || this.user?._id || 'user123'
+      return this.user?.id || this.user?._id || this.user || 'user123'
     },
     isFormValid() {
       return this.eventForm.name.trim() && 
@@ -348,51 +348,46 @@ export default {
     async loadEvents() {
       this.loading = true
       try {
+        console.log('EventManagerPage - Loading events for user:', this.currentUser)
+        console.log('EventManagerPage - User object:', this.user)
         const response = await eventAPI.getEventsByOrganizer(this.currentUser)
+        console.log('EventManagerPage - Events response:', response)
         this.userEvents = response.data || []
         
-        // If no events from API, use mock data
-        if (this.userEvents.length === 0) {
-          this.userEvents = this.getMockEvents()
-        }
+        // No mock data fallback - only show real events
       } catch (error) {
         console.error('Error loading events:', error)
-        // Use mock data on error
-        this.userEvents = this.getMockEvents()
+        // Keep empty array on error
+        this.userEvents = []
       } finally {
         this.loading = false
       }
     },
 
     async loadInterestedEvents() {
-      console.log('🚀 loadInterestedEvents STARTING')
-      console.log('Current loadingInterested state:', this.loadingInterested)
-      console.log('Current interestedEvents length:', this.interestedEvents.length)
+      console.log('🔄 loadInterestedEvents called, current state:', {
+        loadingInterested: this.loadingInterested,
+        interestedEventsLength: this.interestedEvents.length
+      })
       
       this.loadingInterested = true
-      console.log('✅ Set loadingInterested to true')
       
       try {
-        console.log('📡 Step 1: Getting user interests...')
         // Get user's item interests (event IDs)
         const interestsResponse = await interestAPI.getItemInterests(this.currentUser)
-        console.log('📡 Interests response:', interestsResponse)
         
         const interestedItems = interestsResponse.data || []
-        console.log('📡 Interested items:', interestedItems)
         
         if (interestedItems.length === 0) {
-          console.log('📡 No interested items found, setting empty array')
+          console.log('✅ No interested items found, setting empty array and stopping loading')
           this.interestedEvents = []
           this.loadingInterested = false
-          console.log('✅ Set loadingInterested to false (early return)')
+          console.log('✅ Early return - loadingInterested set to false')
           return
         }
 
-        console.log('📡 Step 2: Getting event details...')
         // Get each interested event by ID in parallel
         const interestedEventIds = interestedItems.map(item => item.item)
-        console.log('📡 Event IDs to fetch:', interestedEventIds)
         
         const eventPromises = interestedEventIds.map(eventId => 
           eventAPI.getEventById(eventId).catch(error => {
@@ -401,31 +396,24 @@ export default {
           })
         )
         
-        console.log('📡 Making parallel API calls...')
         const eventResponses = await Promise.all(eventPromises)
-        console.log('📡 Event responses received:', eventResponses)
         
         // Filter out null responses and extract events
         this.interestedEvents = eventResponses
-          .filter(response => response !== null && response.data)
+          .filter(response => response !== null && response.data && response.data[0])
           .map(response => response.data[0])
-        
-        console.log('📡 Final interestedEvents:', this.interestedEvents)
-        console.log('📡 Final interestedEvents length:', this.interestedEvents.length)
+          .filter(event => event && event._id) // Ensure each event has an _id
 
-        // If no events were successfully loaded, use mock data as fallback
-        if (this.interestedEvents.length === 0) {
-          console.log('📡 No events loaded, using mock data')
-          this.interestedEvents = this.getMockInterestedEvents()
-        }
+        console.log('📡 Filtered interested events:', this.interestedEvents)
+
+        // No mock data fallback - only show real events
       } catch (error) {
-        console.error('❌ Error loading interested events:', error)
-        this.interestedEvents = this.getMockInterestedEvents()
+        console.error('Error loading interested events:', error)
+        // Keep empty array on error
+        this.interestedEvents = []
       } finally {
-        console.log('🏁 FINALLY BLOCK - setting loadingInterested to false')
         this.loadingInterested = false
-        console.log('✅ Final loadingInterested state:', this.loadingInterested)
-        console.log('✅ Final interestedEvents length:', this.interestedEvents.length)
+        console.log('✅ Finally block - loadingInterested set to false, interestedEvents length:', this.interestedEvents.length)
       }
     },
 
@@ -444,43 +432,6 @@ export default {
       }
     },
 
-    getMockEvents() {
-      return [
-        {
-          _id: 'event1',
-          name: 'Vue.js Workshop',
-          date: '2024-02-15T18:00:00Z',
-          duration: 120,
-          location: 'MIT Building 32',
-          description: 'Learn Vue.js fundamentals with hands-on coding exercises.',
-          organizer: 'user123',
-          status: 'upcoming',
-          attendees: 15
-        },
-        {
-          _id: 'event2',
-          name: 'Coffee & Code',
-          date: '2024-02-20T10:00:00Z',
-          duration: 90,
-          location: 'Stata Center',
-          description: 'Casual coding session with coffee and pastries.',
-          organizer: 'user123',
-          status: 'upcoming',
-          attendees: 8
-        },
-        {
-          _id: 'event3',
-          name: 'AI Meetup',
-          date: '2024-01-25T19:00:00Z',
-          duration: 150,
-          location: 'MIT CSAIL',
-          description: 'Discussion on latest AI trends and hands-on ML workshop.',
-          organizer: 'user123',
-          status: 'completed',
-          attendees: 25
-        }
-      ]
-    },
 
     formatDate(dateString) {
       const date = new Date(dateString)
@@ -506,6 +457,32 @@ export default {
     statusClass(status) {
       return {
         'status-upcoming': status === 'upcoming',
+        'status-cancelled': status === 'cancelled',
+        'status-completed': status === 'completed'
+      }
+    },
+
+    getEventStatus(event) {
+      if (!event.date || !event.duration) return 'upcoming'
+      
+      const now = new Date()
+      const eventStartTime = new Date(event.date)
+      const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
+      
+      if (eventEndTime <= now) {
+        return 'completed'
+      } else if (eventStartTime <= now) {
+        return 'in-progress'
+      } else {
+        return 'upcoming'
+      }
+    },
+
+    getStatusClass(event) {
+      const status = this.getEventStatus(event)
+      return {
+        'status-upcoming': status === 'upcoming',
+        'status-in-progress': status === 'in-progress',
         'status-cancelled': status === 'cancelled',
         'status-completed': status === 'completed'
       }
@@ -552,6 +529,8 @@ export default {
 
       this.saving = true
       try {
+        console.log('EventManagerPage - Creating event with organizer:', this.currentUser)
+        console.log('EventManagerPage - User object during creation:', this.user)
         const eventData = {
           organizer: this.currentUser,
           name: this.eventForm.name,
@@ -560,6 +539,7 @@ export default {
           location: this.eventForm.location,
           description: this.eventForm.description
         }
+        console.log('EventManagerPage - Event data:', eventData)
 
         console.log("Sending event data to API:", eventData);
 
@@ -615,12 +595,15 @@ export default {
         try {
           await eventAPI.deleteEvent(this.currentUser, event._id)
           await this.loadEvents()
+          // Also reload interested events in case the deleted event was in the interested list
+          await this.loadInterestedEvents()
         } catch (error) {
           console.error('Error deleting event:', error)
           alert('Error deleting event. Please try again.')
         }
       }
     },
+
 
     getMockInterestedEvents() {
       return [
@@ -866,6 +849,11 @@ export default {
 .status-completed {
   background-color: #e8f4fd;
   color: #1e40af;
+}
+
+.status-in-progress {
+  background-color: #fff3cd;
+  color: #856404;
 }
 
 .event-details {

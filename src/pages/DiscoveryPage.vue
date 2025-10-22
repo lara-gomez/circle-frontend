@@ -94,7 +94,7 @@ export default {
   },
   computed: {
     currentUser() {
-      return this.user?.id || this.user?._id || 'user123'
+      return this.user?.id || this.user?._id || this.user || 'user123'
     }
   },
   async mounted() {
@@ -120,11 +120,19 @@ export default {
       this.loading = true
       try {
         const response = await eventAPI.getEventsByStatus('upcoming')
-        this.recommendedEvents = response.data || []
-
-        if (this.recommendedEvents.length === 0) {
-          this.recommendedEvents = this.getMockEvents()
-        }
+        const allEvents = response.data || []
+        
+        // Filter out events that have passed their end time
+        const now = new Date()
+        this.recommendedEvents = allEvents.filter(event => {
+          if (!event.date || !event.duration) return true // Keep events with missing data
+          
+          const eventStartTime = new Date(event.date)
+          const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
+          
+          // Only show events that haven't ended yet
+          return eventEndTime > now
+        })
 
         // Load friends attending data for each event
         await this.loadFriendsAttendingData()
@@ -133,9 +141,8 @@ export default {
         await this.loadUserInterests()
       } catch (error) {
         console.error('Error loading events:', error)
-        this.recommendedEvents = this.getMockEvents()
-        await this.loadFriendsAttendingData()
-        await this.loadUserInterests()
+        // Keep empty array on error
+        this.recommendedEvents = []
       } finally {
         this.loading = false
       }
@@ -255,78 +262,11 @@ export default {
         }
       } catch (error) {
         console.error('Error loading recent event:', error)
-        this.recentEvent = this.getMockRecentEvent()
+        // Keep null on error
+        this.recentEvent = null
       }
     },
 
-    // Mock Data Helpers
-    getMockEvents() {
-      return [
-        {
-          _id: 'event1',
-          name: 'Vue.js Workshop',
-          date: '2024-02-15T18:00:00Z',
-          duration: 120,
-          location: 'MIT Building 32',
-          description: 'Learn Vue.js fundamentals with hands-on coding exercises. Perfect for beginners and intermediate developers.',
-          organizer: 'Tech Club',
-          status: 'upcoming'
-        },
-        {
-          _id: 'event2',
-          name: 'Coffee & Code',
-          date: '2024-02-20T10:00:00Z',
-          duration: 90,
-          location: 'Stata Center',
-          description: 'Casual coding session with coffee and pastries. Bring your laptop and work on personal projects.',
-          organizer: 'Coding Community',
-          status: 'upcoming'
-        },
-        {
-          _id: 'event3',
-          name: 'AI & Machine Learning Meetup',
-          date: '2024-02-25T19:00:00Z',
-          duration: 150,
-          location: 'MIT CSAIL',
-          description: 'Discussion on latest AI trends and hands-on ML workshop. All skill levels welcome.',
-          organizer: 'AI Society',
-          status: 'upcoming'
-        },
-        {
-          _id: 'event4',
-          name: 'Startup Pitch Night',
-          date: '2024-03-01T17:00:00Z',
-          duration: 180,
-          location: 'MIT Media Lab',
-          description: 'Watch student startups pitch their ideas to a panel of investors and entrepreneurs.',
-          organizer: 'Entrepreneurship Club',
-          status: 'upcoming'
-        }
-      ]
-    },
-    
-    getMockFriends() {
-      return [
-        { id: 'friend1', name: 'Alice Johnson', username: 'Alice Johnson' },
-        { id: 'friend2', name: 'Bob Smith', username: 'Bob Smith' },
-        { id: 'friend3', name: 'Carol Davis', username: 'Carol Davis' },
-        { id: 'friend4', name: 'David Wilson', username: 'David Wilson' },
-        { id: 'friend5', name: 'Eva Brown', username: 'Eva Brown' }
-      ]
-    },
-    
-    getMockRecentEvent() {
-      return {
-        _id: 'recent1',
-        name: 'Vue.js Workshop',
-        date: '2024-01-15T18:00:00Z',
-        location: 'MIT Building 32',
-        review: {
-          rating: 8,
-          entry: 'Great workshop!'
-        }
-      }
-    },
     
     async getFriendsAttending(eventId) {
       // This function is now primarily used as a fallback or for single event queries

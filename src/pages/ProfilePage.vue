@@ -139,6 +139,11 @@
         <div class="profile-card">
           <div class="card-header">
             <h3>Your Activity</h3>
+            <div class="card-header-actions">
+              <button class="btn btn-sm btn-secondary" @click="loadStats" :disabled="loadingStats">
+                {{ loadingStats ? 'Refreshing...' : 'Refresh' }}
+              </button>
+            </div>
           </div>
           <div class="card-body">
             <div class="stats-grid">
@@ -241,13 +246,16 @@
 </template>
 
 <script>
-import { interestAPI, friendingAPI } from '../api/services.js'
+import { interestAPI, friendingAPI, authAPI, reviewingAPI, eventAPI } from '../api/services.js'
 import { useAuth } from '../composables/useAuth.js'
 
 export default {
   name: 'ProfilePage',
   setup() {
-    const { user } = useAuth()
+    const { user, initAuth } = useAuth()
+    
+    // Initialize auth state
+    initAuth()
     
     return {
       user
@@ -258,10 +266,10 @@ export default {
       memberSince: 'January 2024',
       interests: ['Technology', 'Vue.js', 'Machine Learning', 'Coffee'],
       stats: {
-        eventsAttended: 12,
-        reviewsWritten: 8,
-        friendsCount: 24,
-        eventsCreated: 3
+        eventsAttended: 0,
+        reviewsWritten: 0,
+        friendsCount: 0,
+        eventsCreated: 0
       },
       showInterestModal: false,
       newInterest: '',
@@ -272,12 +280,38 @@ export default {
       newFriendUsername: '',
       friendRequestError: '',
       sendingFriendRequest: false,
-      processingRequest: null
+      processingRequest: null,
+      fetchedUsername: null,
+      loadingStats: false
     }
   },
   computed: {
     currentUsername() {
-      return this.user?.username || 'Demo User'
+      // If user is just an ID string, we need to fetch the username from API
+      if (typeof this.user === 'string') {
+        return this.fetchedUsername || 'Loading...'
+      }
+      
+      // Try different possible username fields
+      const username = this.user?.username || 
+                      this.user?.name || 
+                      this.user?.id || 
+                      this.user?._id
+      
+      // If no username found, try to get from localStorage
+      if (!username) {
+        const storedUser = localStorage.getItem('user')
+        if (storedUser) {
+          try {
+            const parsedUser = JSON.parse(storedUser)
+            return parsedUser.username || parsedUser.name || parsedUser.id || 'Demo User'
+          } catch (e) {
+            console.error('Error parsing stored user:', e)
+          }
+        }
+      }
+      
+      return username || 'Demo User'
     },
     userInitials() {
       return this.currentUsername
@@ -288,10 +322,104 @@ export default {
     }
   },
   async mounted() {
+    console.log('Profile page - User object:', this.user)
+    console.log('Profile page - Current username:', this.currentUsername)
+    console.log('Profile page - Stored user:', localStorage.getItem('user'))
+    
+    // If user is just an ID string, fetch the username
+    if (typeof this.user === 'string') {
+      await this.fetchUsername()
+    }
+    
     await this.loadFriendsData()
     await this.loadInterests()
+    await this.loadStats()
   },
   methods: {
+    // Username methods
+    async fetchUsername() {
+      try {
+        const response = await authAPI.getUsername(this.user)
+        this.fetchedUsername = response.data[0]?.username || this.user
+        console.log('Fetched username:', this.fetchedUsername)
+      } catch (error) {
+        console.error('Error fetching username:', error)
+        this.fetchedUsername = this.user // fallback to user ID
+      }
+    },
+    
+    // Stats methods
+    async loadStats() {
+      this.loadingStats = true
+      try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        console.log('ProfilePage - Loading stats for user ID:', userId)
+        console.log('ProfilePage - User object:', this.user)
+        
+        // Load stats in parallel
+        console.log('Making API calls for stats...')
+        const [friendsResponse, interestsResponse, reviewsResponse, eventsResponse] = await Promise.all([
+          friendingAPI.getFriends(userId).catch((err) => { console.error('Friends API error:', err); return { data: [] } }),
+          interestAPI.getItemInterests(userId).catch((err) => { console.error('Interests API error:', err); return { data: [] } }),
+          reviewingAPI.getReviewsByUser(userId).catch((err) => { console.error('Reviews API error:', err); return { data: [] } }),
+          eventAPI.getEventsByOrganizer(userId).catch((err) => { console.error('Events API error:', err); return { data: [] } })
+        ])
+        
+        console.log('All API responses received')
+        
+        // Count friends (accepted friends only)
+        const friends = friendsResponse.data || []
+        this.stats.friendsCount = friends.filter(friend => friend.status === 'accepted').length
+        
+        // Count events attended (interested events that have passed their end time)
+        const interestedItems = interestsResponse.data || []
+        const interestedEventIds = interestedItems.map(item => item.item)
+        
+        if (interestedEventIds.length > 0) {
+          const eventPromises = interestedEventIds.map(eventId => 
+            eventAPI.getEventById(eventId).catch(() => null)
+          )
+          const eventResponses = await Promise.all(eventPromises)
+          
+          const now = new Date()
+          const events = eventResponses
+            .filter(response => response !== null && response.data)
+            .map(response => response.data[0])
+            .filter(event => {
+              if (!event || !event.date || !event.duration) return false
+              
+              const eventStartTime = new Date(event.date)
+              const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
+              
+              // Count events that have ended
+              return eventEndTime <= now
+            })
+          
+          this.stats.eventsAttended = events.length
+        } else {
+          this.stats.eventsAttended = 0
+        }
+        
+        // Count reviews written
+        const reviews = reviewsResponse.data || []
+        this.stats.reviewsWritten = reviews.length
+        
+        // Count events created
+        const createdEvents = eventsResponse.data || []
+        this.stats.eventsCreated = createdEvents.length
+        
+        console.log('Events created response:', eventsResponse)
+        console.log('Created events array:', createdEvents)
+        console.log('Events created count:', this.stats.eventsCreated)
+        console.log('Loaded stats:', this.stats)
+      } catch (error) {
+        console.error('Error loading stats:', error)
+        // Keep default values on error
+      } finally {
+        this.loadingStats = false
+      }
+    },
+    
     // Interests methods
     async loadInterests() {
       try {
@@ -332,9 +460,9 @@ export default {
         this.stats.friendsCount = this.acceptedFriends.length
       } catch (error) {
         console.error('Error loading friends data:', error)
-        // Use mock data on error
-        this.acceptedFriends = this.getMockFriends()
-        this.pendingRequests = this.getMockPendingRequests()
+        // Keep empty arrays on error
+        this.acceptedFriends = []
+        this.pendingRequests = []
       }
     },
 
@@ -368,8 +496,9 @@ export default {
           this.user?.id || this.user?._id || 'user123'
         )
         
-        // Reload friends data
+        // Reload friends data and stats
         await this.loadFriendsData()
+        await this.loadStats()
       } catch (error) {
         console.error('Error accepting friend request:', error)
       } finally {
@@ -385,8 +514,9 @@ export default {
           this.user?.id || this.user?._id || 'user123'
         )
         
-        // Reload friends data
+        // Reload friends data and stats
         await this.loadFriendsData()
+        await this.loadStats()
       } catch (error) {
         console.error('Error rejecting friend request:', error)
       } finally {
@@ -406,8 +536,9 @@ export default {
           friendId
         )
         
-        // Reload friends data
+        // Reload friends data and stats
         await this.loadFriendsData()
+        await this.loadStats()
       } catch (error) {
         console.error('Error removing friend:', error)
         alert('Failed to remove friend. Please try again.')
@@ -432,21 +563,6 @@ export default {
       this.friendRequestError = ''
     },
 
-    // Mock data helpers
-    getMockFriends() {
-      return [
-        { id: 'friend1', username: 'Alice Johnson' },
-        { id: 'friend2', username: 'Bob Smith' },
-        { id: 'friend3', username: 'Carol Davis' }
-      ]
-    },
-
-    getMockPendingRequests() {
-      return [
-        { id: 'pending1', username: 'David Wilson' },
-        { id: 'pending2', username: 'Eva Brown' }
-      ]
-    },
     async addInterest() {
       if (this.newInterest.trim() && !this.interests.includes(this.newInterest.trim())) {
         try {
@@ -458,6 +574,8 @@ export default {
           this.interests.push(this.newInterest.trim())
           this.newInterest = ''
           this.closeInterestModal()
+          // Refresh stats after adding interest
+          await this.loadStats()
         } catch (error) {
           console.error('Error adding interest:', error)
           alert('Failed to add interest. Please try again.')
@@ -475,6 +593,8 @@ export default {
           )
           
           this.interests.splice(index, 1)
+          // Refresh stats after removing interest
+          await this.loadStats()
         } catch (error) {
           console.error('Error removing interest:', error)
           alert('Failed to remove interest. Please try again.')
@@ -485,7 +605,7 @@ export default {
     closeInterestModal() {
       this.showInterestModal = false
       this.newInterest = ''
-    }
+    },
   }
 }
 </script>
@@ -542,6 +662,12 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .card-header h3 {

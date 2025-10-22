@@ -77,6 +77,12 @@
               >
                 Edit Review
               </button>
+              <button 
+                @click="removeFromHistory(event)" 
+                class="btn btn-remove-history"
+              >
+                Remove from History
+              </button>
             </div>
           </div>
 
@@ -156,7 +162,7 @@
 </template>
 
 <script>
-import { eventAPI, reviewingAPI } from '../api/services.js'
+import { eventAPI, reviewingAPI, interestAPI } from '../api/services.js'
 import { useAuth } from '../composables/useAuth.js'
 
 export default {
@@ -209,89 +215,87 @@ export default {
     async loadPastEvents() {
       this.loading = true
       try {
-        // Get user's reviews
-        const reviewsResponse = await reviewingAPI.getReviewsByUser(this.currentUser)
-        const reviews = reviewsResponse.data || []
+        // Get user's interested events (same logic as EventManagerPage)
+        const interestsResponse = await interestAPI.getItemInterests(this.currentUser)
+        const interestedItems = interestsResponse.data || []
         
-        // Get event details for each reviewed event
-        const eventsWithReviews = []
-        for (const reviewData of reviews) {
-          const review = reviewData.review
-          try {
-            const eventResponse = await eventAPI.getEventById(review.target)
-            const event = eventResponse.data[0]
-            if (event) {
-              eventsWithReviews.push({
-                ...event,
-                review: review
-              })
-            }
-          } catch (error) {
-            console.error(`Error fetching event ${review.target}:`, error)
-          }
+        if (interestedItems.length === 0) {
+          this.pastEvents = []
+          this.loading = false
+          return
         }
+
+        // Get each interested event by ID in parallel
+        const interestedEventIds = interestedItems.map(item => item.item)
         
-        // Sort by date (most recent first)
-        this.pastEvents = eventsWithReviews.sort((a, b) => 
-          new Date(b.date) - new Date(a.date)
+        const eventPromises = interestedEventIds.map(eventId => 
+          eventAPI.getEventById(eventId).catch(error => {
+            console.warn(`Failed to fetch event ${eventId}:`, error)
+            return null
+          })
         )
         
-        // If no events from API, use mock data
-        if (this.pastEvents.length === 0) {
-          this.pastEvents = this.getMockPastEvents()
-        }
+        const eventResponses = await Promise.all(eventPromises)
+        
+        // Filter out null responses and extract events
+        const allInterestedEvents = eventResponses
+          .filter(response => response !== null && response.data && response.data[0])
+          .map(response => response.data[0])
+          .filter(event => event && event._id) // Ensure each event is valid
+
+        // Filter for events that have passed their end time (regardless of status)
+        const now = new Date()
+        console.log('EventHistoryPage - Current time:', now)
+        console.log('EventHistoryPage - All interested events:', allInterestedEvents)
+        
+        const completedEvents = allInterestedEvents.filter(event => {
+          if (!event || !event.date || !event.duration) {
+            console.log('EventHistoryPage - Skipping event with missing data:', event)
+            return false
+          }
+          
+          const eventStartTime = new Date(event.date)
+          const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
+          
+          console.log(`EventHistoryPage - Event: ${event.name}, Start: ${eventStartTime}, End: ${eventEndTime}, Has ended: ${eventEndTime <= now}`)
+          
+          // Show events that have ended
+          return eventEndTime <= now
+        })
+        
+        console.log('EventHistoryPage - Completed events:', completedEvents)
+        
+        // Get user's existing reviews to attach to events
+        const reviewsResponse = await reviewingAPI.getReviewsByUser(this.currentUser)
+        const reviews = reviewsResponse.data || []
+        console.log('EventHistoryPage - Reviews response:', reviews)
+        
+        // Create a map of event ID to review for quick lookup
+        const reviewMap = {}
+        reviews.forEach(reviewData => {
+          console.log('EventHistoryPage - Review data:', reviewData)
+          const review = reviewData.review || reviewData
+          console.log('EventHistoryPage - Review object:', review)
+          reviewMap[review.target] = review
+        })
+        console.log('EventHistoryPage - Review map:', reviewMap)
+        
+        // Attach reviews to events where they exist
+        this.pastEvents = completedEvents.map(event => ({
+          ...event,
+          review: reviewMap[event._id] || null
+        })).sort((a, b) => new Date(b.date) - new Date(a.date))
+        
+        // No mock data fallback - only show real events
       } catch (error) {
         console.error('Error loading past events:', error)
-        // Use mock data on error
-        this.pastEvents = this.getMockPastEvents()
+        // Keep empty array on error
+        this.pastEvents = []
       } finally {
         this.loading = false
       }
     },
 
-    getMockPastEvents() {
-      return [
-        {
-          _id: 'event1',
-          name: 'Vue.js Workshop',
-          date: '2024-01-15T18:00:00Z',
-          duration: 120,
-          location: 'MIT Building 32',
-          description: 'Learn Vue.js fundamentals with hands-on coding exercises. Perfect for beginners and intermediate developers.',
-          organizer: 'Tech Club',
-          status: 'completed',
-          review: {
-            rating: 8,
-            entry: 'Great workshop! The instructor was very knowledgeable and the hands-on exercises were really helpful. I learned a lot about Vue.js components and state management.'
-          }
-        },
-        {
-          _id: 'event2',
-          name: 'Coffee & Code',
-          date: '2024-01-10T10:00:00Z',
-          duration: 90,
-          location: 'Stata Center',
-          description: 'Casual coding session with coffee and pastries. Bring your laptop and work on personal projects.',
-          organizer: 'Coding Community',
-          status: 'completed',
-          review: {
-            rating: 7,
-            entry: 'Nice atmosphere for getting work done. Good coffee too! Met some interesting people working on similar projects.'
-          }
-        },
-        {
-          _id: 'event3',
-          name: 'AI & Machine Learning Meetup',
-          date: '2024-01-05T19:00:00Z',
-          duration: 150,
-          location: 'MIT CSAIL',
-          description: 'Discussion on latest AI trends and hands-on ML workshop. All skill levels welcome.',
-          organizer: 'AI Society',
-          status: 'completed',
-          review: null
-        }
-      ]
-    },
 
     formatDate(dateString) {
       const date = new Date(dateString)
@@ -375,6 +379,23 @@ export default {
         alert('Error saving review. Please try again.')
       } finally {
         this.saving = false
+      }
+    },
+
+    async removeFromHistory(event) {
+      if (confirm(`Did you not attend "${event.name}"? This will remove it from your event history.`)) {
+        try {
+          // Remove the user's interest in this event
+          await interestAPI.removeItemInterest(this.currentUser, event._id)
+          
+          // Remove from local list
+          this.pastEvents = this.pastEvents.filter(e => e._id !== event._id)
+          
+          alert('Event removed from your history.')
+        } catch (error) {
+          console.error('Error removing event from history:', error)
+          alert('Error removing event from history. Please try again.')
+        }
       }
     }
   }
@@ -661,6 +682,15 @@ export default {
 
 .btn-edit-review:hover {
   background: #d97706;
+}
+
+.btn-remove-history {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-remove-history:hover {
+  background: #dc2626;
 }
 
 /* Modal Styles */

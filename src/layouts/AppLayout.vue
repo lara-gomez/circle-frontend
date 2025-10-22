@@ -40,7 +40,6 @@
       </div>
       
       <div class="nav-user" v-if="user">
-        <span class="user-greeting">Hello, {{ currentUsername }}!</span>
         <button class="btn-logout" @click="logout">Logout</button>
       </div>
     </nav>
@@ -88,7 +87,7 @@ export default {
 .nav-header {
   background: white;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 1rem 2rem;
+  padding: 2rem 3rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -111,15 +110,15 @@ export default {
 
 .nav-menu {
   display: flex;
-  gap: 2rem;
+  gap: 3rem;
 }
 
 .nav-item {
   color: #6b7280;
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 500;
   text-decoration: none;
-  padding: 0.5rem 0;
+  padding: 0.75rem 0;
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
   position: relative;
@@ -140,10 +139,6 @@ export default {
   gap: 1rem;
 }
 
-.user-greeting {
-  color: #374151;
-  font-weight: 500;
-}
 
 .btn-logout {
   background: #ef4444;
@@ -162,27 +157,27 @@ export default {
 }
 
 .main-content {
-  width: 90%;
-  max-width: 1400px;
+  width: 95%;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 3rem 2rem;
 }
 
 @media (max-width: 768px) {
   .nav-header {
-    padding: 1rem;
+    padding: 1.5rem;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.5rem;
   }
   
   .nav-menu {
-    gap: 1rem;
+    gap: 2rem;
     flex-wrap: wrap;
     justify-content: center;
   }
   
   .main-content {
-    padding: 1rem;
+    padding: 2rem 1rem;
   }
 }
 </style>

@@ -23,7 +23,7 @@
         </div>
         <div class="info-item">
           <span class="icon">👤</span>
-          <span>{{ event.organizer }}</span>
+          <span>{{ organizerUsername || event.organizer }}</span>
         </div>
       </div>
       
@@ -97,7 +97,8 @@ export default {
   },
   data() {
     return {
-      loading: false
+      loading: false,
+      organizerUsername: null
     }
   },
   computed: {
@@ -152,7 +153,24 @@ export default {
         .join('')
         .toUpperCase()
         .slice(0, 2)
+    },
+    
+    async fetchOrganizerUsername() {
+      try {
+        // Import the authAPI here to avoid circular dependencies
+        const { authAPI } = await import('../api/services.js')
+        const response = await authAPI.getUsername(this.event.organizer)
+        // Extract username from the response object
+        this.organizerUsername = response.data?.username || response.data
+      } catch (error) {
+        console.error('Error fetching organizer username:', error)
+        // Keep organizerUsername as null, will fallback to showing user ID
+      }
     }
+  },
+  
+  async mounted() {
+    await this.fetchOrganizerUsername()
   },
   
 }
