@@ -395,44 +395,47 @@ export default {
 <style scoped>
 .welcome-section {
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: 4rem; /* More generous spacing */
+  padding: 2rem 0; /* More padding */
 }
 
 .welcome-section h2 {
-  color: #2c3e50;
-  font-size: 2rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
+  color: #2f3e46;
+  font-size: 3rem; /* Much larger for desktop */
+  font-weight: 600; /* Bolder */
+  margin-bottom: 1.5rem; /* More spacing */
+  letter-spacing: -0.025em;
 }
 
 .welcome-section p {
-  color: #6b7280;
-  font-size: 1.125rem;
-  max-width: 700px;
+  color: #52796f;
+  font-size: 1.25rem; /* Larger font */
+  max-width: 800px; /* Wider max-width */
   margin: 0 auto;
-  line-height: 1.6;
+  line-height: 1.7; /* Better line height */
 }
 
 .events-section {
-  margin-bottom: 3rem;
+  margin-bottom: 6rem; /* More generous spacing */
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  margin-bottom: 3rem; /* More spacing */
 }
 
 .section-header h3 {
-  color: #2c3e50;
-  font-size: 1.5rem;
-  font-weight: 600;
+  color: #2f3e46;
+  font-size: 2rem; /* Larger for desktop */
+  font-weight: 600; /* Bolder */
   margin: 0;
+  letter-spacing: -0.025em;
 }
 
 .btn-refresh {
-  background: #42b883;
+  background: #84a98c;
   color: white;
   border: none;
   padding: 0.5rem 1rem;
@@ -444,7 +447,7 @@ export default {
 }
 
 .btn-refresh:hover:not(:disabled) {
-  background: #369870;
+  background: #74a077;
 }
 
 .btn-refresh:disabled {
@@ -486,8 +489,8 @@ export default {
 
 .events-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); /* Larger cards for desktop */
+  gap: 3rem; /* More spacing between cards */
   max-width: none;
 }
 

@@ -43,7 +43,7 @@
       
       <div class="events-grid">
         <div 
-          v-for="event in userEvents.filter(e => e && e._id)" 
+          v-for="event in sortedUserEvents" 
           :key="event._id" 
           class="event-manager-card"
         >
@@ -85,9 +85,16 @@
             <button 
               @click="cancelEvent(event)" 
               class="btn btn-cancel"
-              v-if="getEventStatus(event) === 'upcoming'"
+              v-if="getEventStatus(event) === 'upcoming' && event.status !== 'cancelled'"
             >
               Cancel
+            </button>
+            <button 
+              @click="uncancelEvent(event)" 
+              class="btn btn-uncancel"
+              v-if="event.status === 'cancelled'"
+            >
+              Uncancel
             </button>
             <button 
               @click="deleteEvent(event)" 
@@ -326,6 +333,38 @@ export default {
              this.eventForm.duration > 0 && 
              this.eventForm.location.trim() && 
              this.eventForm.description.trim()
+    },
+    sortedUserEvents() {
+      // Create a copy of the array to sort
+      const events = [...this.userEvents].filter(e => e && e._id)
+      
+      // Sort by status: upcoming (by earliest date), then cancelled, then completed
+      events.sort((a, b) => {
+        const statusA = this.getEventStatus(a)
+        const statusB = this.getEventStatus(b)
+        
+        // Define status priority order
+        const statusOrder = { 'upcoming': 0, 'cancelled': 1, 'completed': 2 }
+        const priorityA = statusOrder[statusA] !== undefined ? statusOrder[statusA] : 99
+        const priorityB = statusOrder[statusB] !== undefined ? statusOrder[statusB] : 99
+        
+        // If different status priorities, sort by priority
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB
+        }
+        
+        // If same status, sort by date (earliest first for upcoming, latest first for others)
+        const dateA = new Date(a.date || 0)
+        const dateB = new Date(b.date || 0)
+        
+        if (statusA === 'upcoming') {
+          return dateA - dateB // Earliest first
+        } else {
+          return dateB - dateA // Latest first
+        }
+      })
+      
+      return events
     }
   },
   async mounted() {
@@ -485,6 +524,12 @@ export default {
     },
 
     getEventStatus(event) {
+      // If event is cancelled, always show cancelled status
+      if (event.status === 'cancelled') {
+        return 'cancelled'
+      }
+      
+      // Otherwise, calculate status based on time
       if (!event.date || !event.duration) return 'upcoming'
       
       const now = new Date()
@@ -636,9 +681,25 @@ export default {
         try {
           await eventAPI.cancelEvent(this.currentUser, event._id)
           await this.loadEvents()
+          // Also reload interested events to update status in interested list
+          await this.loadInterestedEvents()
         } catch (error) {
           console.error('Error cancelling event:', error)
           alert('Error cancelling event. Please try again.')
+        }
+      }
+    },
+
+    async uncancelEvent(event) {
+      if (confirm(`Are you sure you want to restore "${event.name}" to upcoming?`)) {
+        try {
+          await eventAPI.unCancelEvent(this.currentUser, event._id)
+          await this.loadEvents()
+          // Also reload interested events to update status in interested list
+          await this.loadInterestedEvents()
+        } catch (error) {
+          console.error('Error uncancelling event:', error)
+          alert(error.response?.data?.error || 'Error uncancelling event. Please try again.')
         }
       }
     },
@@ -695,46 +756,48 @@ export default {
 <style scoped>
 .page-header {
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: 4rem; /* More generous spacing */
+  padding: 2rem 0; /* More padding */
 }
 
 .page-header h2 {
-  color: #2c3e50;
-  font-size: 2rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
+  color: #2f3e46;
+  font-size: 3rem; /* Much larger for desktop */
+  font-weight: 600; /* Bolder */
+  margin-bottom: 1.5rem; /* More spacing */
+  letter-spacing: -0.025em;
 }
 
 .page-header p {
-  color: #6b7280;
-  font-size: 1.125rem;
-  margin-bottom: 2rem;
-  max-width: 600px;
+  color: #52796f;
+  font-size: 1.25rem; /* Larger font */
+  margin-bottom: 2.5rem; /* More spacing */
+  max-width: 700px; /* Wider max-width */
   margin-left: auto;
   margin-right: auto;
-  line-height: 1.6;
+  line-height: 1.7; /* Better line height */
 }
 
 .btn-large {
-  padding: 0.75rem 2rem;
-  font-size: 1rem;
+  padding: 1rem 2.5rem; /* Larger padding for desktop */
+  font-size: 1.125rem; /* Larger font */
+  font-weight: 600; /* Bolder */
+  border-radius: 12px; /* More rounded */
 }
 
 .events-section {
-  margin-bottom: 3rem;
+  margin-top: 6rem; /* More generous spacing */
+  margin-bottom: 5rem; /* More spacing */
 }
 
 .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
+  margin-bottom: 3rem; /* More spacing */
 }
 
 .section-header h3 {
-  color: #2c3e50;
-  font-size: 1.5rem;
-  font-weight: 600;
+  color: #2f3e46; /* Updated color */
+  font-size: 2rem; /* Larger for desktop */
+  font-weight: 600; /* Bolder */
   margin: 0;
 }
 
@@ -833,8 +896,8 @@ export default {
 
 .events-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(450px, 1fr)); /* Larger cards for desktop */
+  gap: 3rem; /* More spacing between cards */
   max-width: none;
 }
 
@@ -996,6 +1059,15 @@ export default {
 
 .btn-cancel:hover {
   background: #d97706;
+}
+
+.btn-uncancel {
+  background: #10b981;
+  color: white;
+}
+
+.btn-uncancel:hover {
+  background: #059669;
 }
 
 .btn-delete {

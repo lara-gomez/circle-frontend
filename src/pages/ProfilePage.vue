@@ -613,22 +613,24 @@ export default {
 <style scoped>
 .page-header {
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: 4rem; /* More generous spacing */
+  padding: 2rem 0; /* More padding */
 }
 
 .page-header h2 {
-  color: #2c3e50;
-  font-size: 2rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
+  color: #2f3e46;
+  font-size: 3rem; /* Much larger for desktop */
+  font-weight: 600; /* Bolder */
+  margin-bottom: 1.5rem; /* More spacing */
+  letter-spacing: -0.025em;
 }
 
 .page-header p {
-  color: #6b7280;
-  font-size: 1.125rem;
-  max-width: 600px;
+  color: #52796f;
+  font-size: 1.25rem; /* Larger font */
+  max-width: 700px; /* Wider max-width */
   margin: 0 auto;
-  line-height: 1.6;
+  line-height: 1.7; /* Better line height */
 }
 
 .profile-content {
@@ -637,8 +639,8 @@ export default {
 
 .profile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); /* Larger cards for desktop */
+  gap: 3rem; /* More spacing between cards */
   max-width: none;
 }
 
