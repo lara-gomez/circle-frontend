@@ -31,6 +31,14 @@
     <div class="section-header">
       <h3>Your Events</h3>
       <div class="section-actions">
+        <div class="search-container">
+          <input 
+            v-model="searchQuery"
+            type="text" 
+            placeholder="Search events..."
+            class="search-input"
+          />
+        </div>
         <button 
           @click="loadEvents" 
           class="btn btn-refresh"
@@ -81,6 +89,12 @@
               class="btn btn-edit"
             >
               Edit
+            </button>
+            <button 
+              @click="viewEventReviews(event)" 
+              class="btn btn-reviews"
+            >
+              Reviews
             </button>
             <button 
               @click="cancelEvent(event)" 
@@ -285,10 +299,69 @@
         </div>
       </div>
     </div>
+
+    <!-- Reviews Modal -->
+    <div v-if="showReviewsModal" class="modal-overlay" @click="closeReviewsModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>Reviews for "{{ selectedEvent?.name }}"</h3>
+          <button class="modal-close" @click="closeReviewsModal">×</button>
+        </div>
+        
+        <div class="modal-body">
+          <div v-if="loadingReviews" class="loading">
+            <div class="loading-spinner"></div>
+            <p>Loading reviews...</p>
+          </div>
+          
+          <div v-else-if="eventReviews.length === 0" class="no-reviews">
+            <div class="no-reviews-content">
+              <span class="no-reviews-icon">📝</span>
+              <h4>No Reviews Yet</h4>
+              <p>This event doesn't have any reviews yet.</p>
+            </div>
+          </div>
+          
+          <div v-else class="reviews-list">
+            <div 
+              v-for="review in eventReviews" 
+              :key="review.id" 
+              class="review-card"
+            >
+              <div class="review-header">
+                <div class="reviewer-info">
+                  <span class="reviewer-name">{{ review.reviewer ? getReviewerUsername(review.reviewer) : 'Unknown Reviewer' }}</span>
+                  <div class="review-rating">
+                    <span 
+                      v-for="star in 5" 
+                      :key="star"
+                      class="star"
+                      :class="{ 'filled': star <= (review.rating || 0) }"
+                    >
+                      ★
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="review-content">
+                <p>{{ review.entry || 'No comment provided' }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeReviewsModal">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
 </template>
 
 <script>
-import { eventAPI, interestAPI } from '../api/services.js'
+import { eventAPI, interestAPI, reviewingAPI } from '../api/services.js'
 import { useAuth } from '../composables/useAuth.js'
 
 export default {
@@ -314,6 +387,12 @@ export default {
       saving: false,
       processingInterest: null,
       organizerUsernames: {}, // Cache for organizer usernames
+      searchQuery: '', // Search functionality
+      showReviewsModal: false,
+      selectedEvent: null,
+      eventReviews: [],
+      loadingReviews: false,
+      reviewerUsernames: {}, // Cache for reviewer usernames
       eventForm: {
         name: '',
         date: '',
@@ -335,8 +414,18 @@ export default {
              this.eventForm.description.trim()
     },
     sortedUserEvents() {
-      // Create a copy of the array to sort
-      const events = [...this.userEvents].filter(e => e && e._id)
+      // Create a copy of the array to sort and filter
+      let events = [...this.userEvents].filter(e => e && e._id)
+      
+      // Apply search filter
+      if (this.searchQuery.trim()) {
+        const query = this.searchQuery.toLowerCase()
+        events = events.filter(event => 
+          event.name.toLowerCase().includes(query) ||
+          event.location.toLowerCase().includes(query) ||
+          event.description.toLowerCase().includes(query)
+        )
+      }
       
       // Sort by status: upcoming (by earliest date), then cancelled, then completed
       events.sort((a, b) => {
@@ -504,6 +593,24 @@ export default {
         hour: '2-digit',
         minute: '2-digit'
       })
+    },
+
+    formatReviewDate(dateString) {
+      if (!dateString) return 'Date not available'
+      
+      try {
+        const date = new Date(dateString)
+        if (isNaN(date.getTime())) return 'Invalid date'
+        
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        })
+      } catch (error) {
+        console.error('Error formatting review date:', error)
+        return 'Date not available'
+      }
     },
 
     formatDuration(minutes) {
@@ -748,6 +855,83 @@ export default {
     async refreshInterestedEvents() {
       console.log('Manually refreshing interested events...')
       await this.loadInterestedEvents()
+    },
+
+    // Reviews functionality
+    async viewEventReviews(event) {
+      this.selectedEvent = event
+      this.showReviewsModal = true
+      this.loadingReviews = true
+      
+      try {
+        console.log('Viewing reviews for event:', event._id)
+        // Get reviews for this event using the reviewingAPI
+        const response = await reviewingAPI.getReviewsByItem(event._id)
+        console.log('Reviews response:', response)
+        // Extract the actual review objects from the nested structure
+        this.eventReviews = (response.data || []).map(item => item.review).filter(review => review)
+        console.log('Parsed reviews:', this.eventReviews)
+        console.log('Current user for comparison:', this.currentUser)
+        
+        // Load reviewer usernames if reviews exist
+        if (this.eventReviews.length > 0) {
+          await this.loadReviewerUsernames(this.eventReviews)
+        }
+      } catch (error) {
+        console.error('Error loading reviews:', error)
+        this.eventReviews = []
+        alert('Failed to load reviews. Please try again.')
+      } finally {
+        this.loadingReviews = false
+      }
+    },
+
+    async loadReviewerUsernames(reviews) {
+      console.log('Loading usernames for reviews:', reviews)
+      // Filter out undefined or null user IDs (using 'reviewer' property)
+      const uniqueReviewers = [...new Set(reviews.map(review => review.reviewer).filter(id => id))]
+      console.log('Unique reviewers to fetch:', uniqueReviewers)
+      
+      for (const reviewerId of uniqueReviewers) {
+        if (!reviewerId) {
+          console.warn('Skipping undefined reviewer ID')
+          continue
+        }
+        
+        if (!this.reviewerUsernames[reviewerId]) {
+          try {
+            console.log('Fetching username for reviewer:', reviewerId)
+            const { authAPI } = await import('../api/services.js')
+            const response = await authAPI.getUsername(reviewerId)
+            console.log('Username response for', reviewerId, ':', response)
+            
+            // Handle different response formats
+            if (response.data) {
+              if (Array.isArray(response.data)) {
+                this.reviewerUsernames[reviewerId] = response.data[0]?.username || response.data[0] || reviewerId
+              } else if (typeof response.data === 'object' && response.data.username) {
+                this.reviewerUsernames[reviewerId] = response.data.username
+              } else {
+                this.reviewerUsernames[reviewerId] = response.data
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching reviewer username for', reviewerId, ':', error)
+            this.reviewerUsernames[reviewerId] = reviewerId // Fallback to ID
+          }
+        }
+      }
+    },
+
+    getReviewerUsername(reviewerId) {
+      if (!reviewerId) return 'Unknown'
+      return this.reviewerUsernames[reviewerId] || reviewerId
+    },
+
+    closeReviewsModal() {
+      this.showReviewsModal = false
+      this.selectedEvent = null
+      this.eventReviews = []
     }
   }
 }
@@ -801,8 +985,33 @@ export default {
   margin: 0;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.search-container {
+  position: relative;
+}
+
+.search-input {
+  padding: 0.5rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  width: 250px;
+  transition: border-color 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #84a98c;
+  box-shadow: 0 0 0 2px rgba(132, 169, 140, 0.1);
+}
+
 .btn-refresh {
-  background: #42b883;
+  background: #6b7280;
   color: white;
   border: none;
   padding: 0.5rem 1rem;
@@ -814,7 +1023,7 @@ export default {
 }
 
 .btn-refresh:hover:not(:disabled) {
-  background: #369870;
+  background: #4b5563;
 }
 
 .action-buttons {
@@ -1020,12 +1229,12 @@ export default {
 }
 
 .btn-primary {
-  background: #42b883;
+  background: #84a98c;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #369870;
+  background: #74a077;
 }
 
 .btn-primary:disabled {
@@ -1044,39 +1253,48 @@ export default {
 }
 
 .btn-edit {
-  background: #3b82f6;
+  background: #6b7280;
   color: white;
 }
 
 .btn-edit:hover {
-  background: #2563eb;
+  background: #4b5563;
 }
 
 .btn-cancel {
-  background: #f59e0b;
+  background: #9ca3af;
   color: white;
 }
 
 .btn-cancel:hover {
-  background: #d97706;
+  background: #6b7280;
 }
 
 .btn-uncancel {
-  background: #10b981;
+  background: #84a98c;
   color: white;
 }
 
 .btn-uncancel:hover {
-  background: #059669;
+  background: #74a077;
 }
 
 .btn-delete {
-  background: #ef4444;
+  background: #9ca3af;
   color: white;
 }
 
 .btn-delete:hover {
-  background: #dc2626;
+  background: #6b7280;
+}
+
+.btn-reviews {
+  background: #84a98c;
+  color: white;
+}
+
+.btn-reviews:hover {
+  background: #74a077;
 }
 
 /* Modal Styles */
@@ -1196,6 +1414,87 @@ export default {
   box-shadow: 0 0 0 3px rgba(66, 184, 131, 0.1);
 }
 
+/* Reviews Modal Styles */
+.no-reviews {
+  text-align: center;
+  padding: 3rem 2rem;
+}
+
+.no-reviews-content {
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+.no-reviews-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.no-reviews h4 {
+  color: #2c3e50;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.no-reviews p {
+  color: #6b7280;
+  margin: 0;
+}
+
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.review-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.review-header {
+  margin-bottom: 1rem;
+}
+
+.reviewer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reviewer-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.review-rating {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.star {
+  color: #d1d5db;
+  font-size: 1rem;
+}
+
+.star.filled {
+  color: #fbbf24;
+}
+
+.review-content {
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.review-content p {
+  margin: 0;
+}
+
 /* Interested Events Styles */
 .interested-event {
   border-left: 4px solid #42b883;
@@ -1208,6 +1507,16 @@ export default {
 @media (max-width: 768px) {
   .page-header h2 {
     font-size: 1.5rem;
+  }
+  
+  .section-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  
+  .search-input {
+    width: 100%;
   }
   
   .events-grid {

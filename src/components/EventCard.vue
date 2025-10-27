@@ -192,15 +192,17 @@ export default {
 .event-card {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .event-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(132, 169, 140, 0.15);
+  border-color: #84a98c;
 }
 
 .event-header {
@@ -211,7 +213,7 @@ export default {
 }
 
 .event-title {
-  color: #2c3e50;
+  color: #2f3e46;
   font-size: 1.25rem;
   font-weight: 600;
   margin: 0;
@@ -227,18 +229,18 @@ export default {
 }
 
 .status-upcoming {
-  background-color: #e8f5e8;
-  color: #2d5a2d;
+  background-color: #e8f0ea;
+  color: #52796f;
 }
 
 .status-cancelled {
-  background-color: #ffeaea;
-  color: #8b0000;
+  background-color: #fef2f2;
+  color: #dc2626;
 }
 
 .status-completed {
-  background-color: #e8f4fd;
-  color: #1e40af;
+  background-color: #e8f0ea;
+  color: #2f3e46;
 }
 
 .event-details {
@@ -256,7 +258,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #6b7280;
+  color: #52796f;
   font-size: 0.9rem;
 }
 
@@ -265,7 +267,7 @@ export default {
 }
 
 .event-description {
-  color: #4b5563;
+  color: #354f52;
   line-height: 1.6;
   margin: 0;
 }
@@ -300,19 +302,20 @@ export default {
 }
 
 .btn-interest {
-  background-color: #f3f4f6;
-  color: #374151;
-  border: 1px solid #d1d5db;
+  background-color: #f8f9fa;
+  color: #52796f;
+  border: 1px solid #e5e7eb;
 }
 
 .btn-interest:hover:not(:disabled) {
-  background-color: #e5e7eb;
+  background-color: #e8f0ea;
+  border-color: #84a98c;
 }
 
 .btn-interest.active {
-  background-color: #10b981;
+  background-color: #84a98c;
   color: white;
-  border-color: #10b981;
+  border-color: #84a98c;
 }
 
 
@@ -321,10 +324,10 @@ export default {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  color: #6b7280;
+  color: #52796f;
   font-size: 0.875rem;
   padding: 0.75rem;
-  background: #f8fafc;
+  background: #f8f9fa;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
 }
@@ -341,7 +344,7 @@ export default {
 
 .friends-count {
   font-weight: 500;
-  color: #374151;
+  color: #2f3e46;
 }
 
 .friends-avatars {
@@ -354,7 +357,7 @@ export default {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #42b883, #369870);
+  background: linear-gradient(135deg, #84a98c, #74a077);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -376,7 +379,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: #52796f;
   font-size: 0.7rem;
   font-weight: 600;
   border: 2px solid white;

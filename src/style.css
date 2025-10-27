@@ -65,12 +65,12 @@ body {
 }
 
 .btn-primary {
-  background-color: #42b883;
+  background-color: #84a98c;
   color: white;
 }
 
 .btn-primary:hover {
-  background-color: #369870;
+  background-color: #74a077;
 }
 
 .btn-secondary {
@@ -112,6 +112,6 @@ body {
 
 .form-input:focus {
   outline: none;
-  border-color: #42b883;
-  box-shadow: 0 0 0 2px rgba(66, 184, 131, 0.2);
+  border-color: #84a98c;
+  box-shadow: 0 0 0 2px rgba(132, 169, 140, 0.2);
 }

@@ -166,6 +166,72 @@
             </div>
           </div>
         </div>
+
+        <!-- Recent Reviews Card -->
+        <div class="profile-card">
+          <div class="card-header">
+            <h3>Recent Reviews</h3>
+            <router-link to="/history" class="btn btn-sm btn-primary">
+              View All
+            </router-link>
+          </div>
+          <div class="card-body">
+            <div v-if="recentReviews.length === 0" class="no-reviews">
+              <p>No reviews yet.</p>
+              <p class="subtitle">Attend events and share your experience!</p>
+            </div>
+            <div v-else class="reviews-list">
+              <div 
+                v-for="review in recentReviews.slice(0, 3)" 
+                :key="review.id" 
+                class="review-item"
+              >
+                <div class="review-event">{{ review.eventName }}</div>
+                <div class="review-rating">
+                  <span 
+                    v-for="star in 5" 
+                    :key="star"
+                    class="star"
+                    :class="{ 'filled': star <= review.rating }"
+                  >
+                    ★
+                  </span>
+                </div>
+                <div class="review-text">{{ review.entry }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event Preferences Card -->
+        <div class="profile-card">
+          <div class="card-header">
+            <h3>Event Preferences</h3>
+            <button class="btn btn-sm btn-primary" @click="showPreferencesModal = true">
+              Edit
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="preferences-list">
+              <div class="preference-item">
+                <span class="preference-label">Location Radius</span>
+                <span class="preference-value">{{ preferences.locationRadius || '10' }} miles</span>
+              </div>
+              <div class="preference-item">
+                <span class="preference-label">Event Types</span>
+                <span class="preference-value">{{ preferences.eventTypes || 'All types' }}</span>
+              </div>
+              <div class="preference-item">
+                <span class="preference-label">Time Preference</span>
+                <span class="preference-value">{{ preferences.timePreference || 'Any time' }}</span>
+              </div>
+              <div class="preference-item">
+                <span class="preference-label">Group Size</span>
+                <span class="preference-value">{{ preferences.groupSize || 'Any size' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -282,7 +348,17 @@ export default {
       sendingFriendRequest: false,
       processingRequest: null,
       fetchedUsername: null,
-      loadingStats: false
+      loadingStats: false,
+      // Recent reviews data
+      recentReviews: [],
+      // Event preferences data
+      preferences: {
+        locationRadius: '10',
+        eventTypes: 'All types',
+        timePreference: 'Any time',
+        groupSize: 'Any size'
+      },
+      showPreferencesModal: false
     }
   },
   computed: {
@@ -334,6 +410,7 @@ export default {
     await this.loadFriendsData()
     await this.loadInterests()
     await this.loadStats()
+    await this.loadRecentReviews()
   },
   methods: {
     // Username methods
@@ -417,6 +494,46 @@ export default {
         // Keep default values on error
       } finally {
         this.loadingStats = false
+      }
+    },
+
+    // Recent reviews methods
+    async loadRecentReviews() {
+      try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const response = await reviewingAPI.getReviewsByUser(userId)
+        
+        // Extract the actual review objects from the nested structure
+        const reviews = (response.data || []).map(item => item.review).filter(review => review)
+        console.log('Profile page - Loaded reviews:', reviews)
+        
+        // Get event names for each review
+        const reviewsWithEventNames = await Promise.all(
+          reviews.map(async (review) => {
+            try {
+              const eventResponse = await eventAPI.getEventById(review.target)
+              const event = eventResponse.data?.[0]
+              return {
+                ...review,
+                eventName: event?.name || 'Unknown Event'
+              }
+            } catch (error) {
+              console.error('Error fetching event for review:', error)
+              return {
+                ...review,
+                eventName: 'Unknown Event'
+              }
+            }
+          })
+        )
+        
+        // Sort by date (most recent first) and take the latest 5
+        this.recentReviews = reviewsWithEventNames
+          .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+          .slice(0, 5)
+      } catch (error) {
+        console.error('Error loading recent reviews:', error)
+        this.recentReviews = []
       }
     },
     
@@ -639,8 +756,8 @@ export default {
 
 .profile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); /* Larger cards for desktop */
-  gap: 3rem; /* More spacing between cards */
+  grid-template-columns: repeat(3, 1fr); /* 3 columns for 2x3 grid */
+  gap: 2rem; /* Balanced spacing */
   max-width: none;
 }
 
@@ -805,8 +922,8 @@ input:checked + .toggle-slider:before {
 }
 
 .interest-tag {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: #e8f0ea;
+  color: #52796f;
   padding: 0.5rem 0.75rem;
   border-radius: 20px;
   font-size: 0.875rem;
@@ -819,7 +936,7 @@ input:checked + .toggle-slider:before {
 .remove-interest {
   background: none;
   border: none;
-  color: #0369a1;
+  color: #52796f;
   font-size: 1.25rem;
   cursor: pointer;
   padding: 0;
@@ -833,7 +950,7 @@ input:checked + .toggle-slider:before {
 }
 
 .remove-interest:hover {
-  background: rgba(3, 105, 161, 0.1);
+  background: rgba(82, 121, 111, 0.1);
 }
 
 .stats-grid {
@@ -847,7 +964,7 @@ input:checked + .toggle-slider:before {
 }
 
 .stat-number {
-  color: #42b883;
+  color: #84a98c;
   font-size: 2rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
@@ -877,12 +994,12 @@ input:checked + .toggle-slider:before {
 }
 
 .btn-primary {
-  background: #42b883;
+  background: #84a98c;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #369870;
+  background: #74a077;
 }
 
 .btn-primary:disabled {
@@ -1101,6 +1218,93 @@ input:checked + .toggle-slider:before {
   font-size: 0.875rem;
   margin-top: 1rem;
   border: 1px solid #fecaca;
+}
+
+/* Recent Reviews Styles */
+.no-reviews {
+  text-align: center;
+  padding: 1rem;
+  color: #6b7280;
+}
+
+.no-reviews .subtitle {
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.review-item {
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.review-event {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.review-rating {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.review-rating .star {
+  color: #d1d5db;
+  font-size: 0.875rem;
+}
+
+.review-rating .star.filled {
+  color: #fbbf24;
+}
+
+.review-text {
+  color: #4b5563;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Event Preferences Styles */
+.preferences-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.preference-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.preference-item:last-child {
+  border-bottom: none;
+}
+
+.preference-label {
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.preference-value {
+  color: #6b7280;
+  font-size: 0.875rem;
 }
 
 @media (max-width: 768px) {

@@ -107,7 +107,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 3rem; /* More generous padding for desktop */
+  padding: 0 4rem; /* Increased padding for more margin */
 }
 
 .nav-brand .brand-link {
@@ -190,7 +190,7 @@ export default {
   width: 100%;
   max-width: 1600px; /* Match navbar width */
   margin: 0 auto; /* Center the content */
-  padding: 3rem 4rem; /* Much more generous padding for desktop */
+  padding: 3rem 5rem; /* Increased horizontal padding for more margin */
   background-color: #f8f9fa;
   box-sizing: border-box;
   min-height: calc(100vh - 120px); /* Account for larger navbar */
@@ -199,19 +199,19 @@ export default {
 /* Desktop-first responsive design */
 @media (max-width: 1600px) {
   .nav-container {
-    padding: 0 2.5rem;
+    padding: 0 3.5rem;
   }
   .main-content {
-    padding: 3rem 3rem;
+    padding: 3rem 4rem;
   }
 }
 
 @media (max-width: 1400px) {
   .nav-container {
-    padding: 0 2rem;
+    padding: 0 3rem;
   }
   .main-content {
-    padding: 2.5rem 2.5rem;
+    padding: 2.5rem 3.5rem;
   }
   .nav-menu {
     gap: 2rem;
@@ -220,10 +220,10 @@ export default {
 
 @media (max-width: 1200px) {
   .nav-container {
-    padding: 0 1.5rem;
+    padding: 0 2.5rem;
   }
   .main-content {
-    padding: 2rem 2rem;
+    padding: 2rem 3rem;
   }
   .nav-menu {
     gap: 1.5rem;
@@ -239,10 +239,10 @@ export default {
 
 @media (max-width: 1024px) {
   .nav-container {
-    padding: 0 1.25rem;
+    padding: 0 2rem;
   }
   .main-content {
-    padding: 2rem 1.5rem;
+    padding: 2rem 2.5rem;
   }
   .nav-menu {
     gap: 1.25rem;
@@ -264,7 +264,7 @@ export default {
   .nav-container {
     flex-direction: column;
     gap: 1.5rem;
-    padding: 0 1rem;
+    padding: 0 1.5rem;
   }
   
   .nav-menu {
@@ -274,7 +274,7 @@ export default {
   }
   
   .main-content {
-    padding: 2rem 1rem;
+    padding: 2rem 1.5rem;
   }
   
   .nav-brand h1 {

@@ -78,6 +78,14 @@
                 Edit Review
               </button>
               <button 
+                v-if="event.review"
+                @click="deleteReview(event)" 
+                class="btn btn-delete-review"
+                :disabled="deletingReview === event._id"
+              >
+                {{ deletingReview === event._id ? 'Deleting...' : 'Delete Review' }}
+              </button>
+              <button 
                 @click="removeFromHistory(event)" 
                 class="btn btn-remove-history"
               >
@@ -185,6 +193,7 @@ export default {
       editingEvent: null,
       saving: false,
       organizerUsernames: {}, // Cache for organizer usernames
+      deletingReview: null, // Track which review is being deleted
       reviewForm: {
         rating: 0,
         entry: ''
@@ -433,6 +442,33 @@ export default {
           console.error('Error removing event from history:', error)
           alert('Error removing event from history. Please try again.')
         }
+      }
+    },
+
+    async deleteReview(event) {
+      if (!confirm(`Are you sure you want to delete your review for "${event.name}"? This action cannot be undone.`)) {
+        return
+      }
+
+      this.deletingReview = event._id
+      
+      try {
+        console.log('Deleting review for event:', event._id)
+        await reviewingAPI.removeReview(this.currentUser, event._id)
+        
+        // Remove the review from the local event object
+        const eventIndex = this.pastEvents.findIndex(e => e._id === event._id)
+        if (eventIndex !== -1) {
+          this.pastEvents[eventIndex].review = null
+        }
+        
+        console.log('Review deleted successfully')
+        alert('Review deleted successfully.')
+      } catch (error) {
+        console.error('Error deleting review:', error)
+        alert('Failed to delete review. Please try again.')
+      } finally {
+        this.deletingReview = null
       }
     }
   }
@@ -690,12 +726,12 @@ export default {
 }
 
 .btn-primary {
-  background: #42b883;
+  background: #84a98c;
   color: white;
 }
 
 .btn-primary:hover {
-  background: #369870;
+  background: #74a077;
 }
 
 .btn-secondary {
@@ -709,30 +745,44 @@ export default {
 }
 
 .btn-add-review {
-  background: #3b82f6;
+  background: #6b7280;
   color: white;
 }
 
 .btn-add-review:hover {
-  background: #2563eb;
+  background: #4b5563;
 }
 
 .btn-edit-review {
-  background: #f59e0b;
+  background: #9ca3af;
   color: white;
 }
 
 .btn-edit-review:hover {
-  background: #d97706;
+  background: #6b7280;
 }
 
 .btn-remove-history {
-  background: #ef4444;
+  background: #9ca3af;
   color: white;
 }
 
 .btn-remove-history:hover {
-  background: #dc2626;
+  background: #6b7280;
+}
+
+.btn-delete-review {
+  background: #9ca3af;
+  color: white;
+}
+
+.btn-delete-review:hover:not(:disabled) {
+  background: #6b7280;
+}
+
+.btn-delete-review:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
 }
 
 /* Modal Styles */
