@@ -232,31 +232,39 @@
           </div>
         </div>
 
-        <!-- Event Preferences Card -->
+        <!-- Recent Activity Card -->
         <div class="profile-card">
           <div class="card-header">
-            <h3>Event Preferences</h3>
-            <button class="btn btn-sm btn-primary" @click="showPreferencesModal = true">
-              Edit
+            <h3>Recent Activity</h3>
+            <button class="btn btn-sm btn-secondary" @click="refreshActivity">
+              Refresh
             </button>
           </div>
           <div class="card-body">
-            <div class="preferences-list">
-              <div class="preference-item">
-                <span class="preference-label">Location Radius</span>
-                <span class="preference-value">{{ preferences.locationRadius || '10' }} miles</span>
-              </div>
-              <div class="preference-item">
-                <span class="preference-label">Event Types</span>
-                <span class="preference-value">{{ preferences.eventTypes || 'All types' }}</span>
-              </div>
-              <div class="preference-item">
-                <span class="preference-label">Time Preference</span>
-                <span class="preference-value">{{ preferences.timePreference || 'Any time' }}</span>
-              </div>
-              <div class="preference-item">
-                <span class="preference-label">Group Size</span>
-                <span class="preference-value">{{ preferences.groupSize || 'Any size' }}</span>
+            <div v-if="loadingActivity" class="loading-state">
+              <p>Loading your recent activity...</p>
+            </div>
+            <div v-else-if="recentActivity.length === 0" class="no-activity">
+              <p>No recent activity yet.</p>
+              <p class="subtitle">Start exploring events to see your activity here!</p>
+            </div>
+            <div v-else class="activity-feed">
+              <div 
+                v-for="activity in recentActivity" 
+                :key="activity.id"
+                class="activity-item"
+              >
+                <div class="activity-icon">
+                  <span v-if="activity.type === 'interested'">❤️</span>
+                  <span v-else-if="activity.type === 'review'">⭐</span>
+                  <span v-else-if="activity.type === 'created'">🎉</span>
+                  <span v-else-if="activity.type === 'friend'">👥</span>
+                  <span v-else>📅</span>
+                </div>
+                <div class="activity-content">
+                  <p class="activity-text">{{ activity.text }}</p>
+                  <p class="activity-time">{{ formatTimeAgo(activity.timestamp) }}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -381,14 +389,9 @@ export default {
       loadingStats: false,
       // Recent reviews data
       recentReviews: [],
-      // Event preferences data
-      preferences: {
-        locationRadius: '10',
-        eventTypes: 'All types',
-        timePreference: 'Any time',
-        groupSize: 'Any size'
-      },
-      showPreferencesModal: false
+      // Recent activity data
+      recentActivity: [],
+      loadingActivity: false
     }
   },
   computed: {
@@ -462,6 +465,7 @@ export default {
     await this.loadInterests()
     await this.loadStats()
     await this.loadRecentReviews()
+    await this.loadRecentActivity()
     
     // Start polling for friend data changes
     this.startFriendsPolling()
@@ -1059,6 +1063,124 @@ export default {
       this.showInterestModal = false
       this.newInterest = ''
     },
+    
+    // Recent Activity methods
+    async loadRecentActivity() {
+      this.loadingActivity = true
+      try {
+        const userId = this.user
+        console.log('Loading recent activity for user:', userId)
+        
+        // Load different types of activity in parallel
+        const [interestsResponse, reviewsResponse, eventsResponse, friendsResponse] = await Promise.all([
+          interestAPI.getItemInterests(userId).catch(() => ({ data: [] })),
+          reviewingAPI.getReviewsByUser(userId).catch(() => ({ data: [] })),
+          eventAPI.getEventsByOrganizer(userId).catch(() => ({ data: [] })),
+          friendingAPI.getFriends(userId).catch(() => ({ data: [] }))
+        ])
+        
+        const activities = []
+        
+        // Process interested events
+        const interestedEvents = interestsResponse.data || []
+        for (const interest of interestedEvents.slice(0, 5)) {
+          try {
+            const eventResponse = await eventAPI.getEventById(interest.item)
+            if (eventResponse.data && eventResponse.data.length > 0) {
+              const event = eventResponse.data[0]
+              activities.push({
+                id: `interested-${interest._id}`,
+                type: 'interested',
+                text: `Marked "${event.name}" as interested`,
+                timestamp: new Date(interest.createdAt || Date.now()),
+                eventId: event._id
+              })
+            }
+          } catch (error) {
+            console.error('Error loading event for activity:', error)
+          }
+        }
+        
+        // Process reviews
+        const reviews = reviewsResponse.data || []
+        for (const reviewData of reviews.slice(0, 5)) {
+          const review = reviewData.review
+          if (review) {
+            try {
+              const eventResponse = await eventAPI.getEventById(review.target)
+              if (eventResponse.data && eventResponse.data.length > 0) {
+                const event = eventResponse.data[0]
+                activities.push({
+                  id: `review-${review.id}`,
+                  type: 'review',
+                  text: `Reviewed "${event.name}" with ${review.rating} stars`,
+                  timestamp: new Date(review.createdAt || Date.now()),
+                  eventId: event._id
+                })
+              }
+            } catch (error) {
+              console.error('Error loading event for review activity:', error)
+            }
+          }
+        }
+        
+        // Process created events
+        const createdEvents = eventsResponse.data || []
+        for (const event of createdEvents.slice(0, 5)) {
+          activities.push({
+            id: `created-${event._id}`,
+            type: 'created',
+            text: `Created event "${event.name}"`,
+            timestamp: new Date(event.createdAt || event.date || Date.now()),
+            eventId: event._id
+          })
+        }
+        
+        // Process friend connections (recent accepted friends)
+        const friends = friendsResponse.data || []
+        for (const friend of friends.slice(0, 3)) {
+          activities.push({
+            id: `friend-${friend.friend}`,
+            type: 'friend',
+            text: `Connected with a new friend`,
+            timestamp: new Date(friend.createdAt || Date.now()),
+            friendId: friend.friend
+          })
+        }
+        
+        // Sort by timestamp (most recent first) and limit to 10 items
+        this.recentActivity = activities
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 10)
+        
+        console.log('Loaded recent activity:', this.recentActivity.length, 'items')
+        
+      } catch (error) {
+        console.error('Error loading recent activity:', error)
+        this.recentActivity = []
+      } finally {
+        this.loadingActivity = false
+      }
+    },
+    
+    async refreshActivity() {
+      await this.loadRecentActivity()
+    },
+    
+    formatTimeAgo(timestamp) {
+      const now = new Date()
+      const diff = now - timestamp
+      const minutes = Math.floor(diff / 60000)
+      const hours = Math.floor(diff / 3600000)
+      const days = Math.floor(diff / 86400000)
+      
+      if (minutes < 1) return 'Just now'
+      if (minutes < 60) return `${minutes}m ago`
+      if (hours < 24) return `${hours}h ago`
+      if (days < 7) return `${days}d ago`
+      
+      return timestamp.toLocaleDateString()
+    },
   }
 }
 </script>
@@ -1103,6 +1225,9 @@ export default {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  height: 400px; /* Fixed height for all cards */
+  display: flex;
+  flex-direction: column;
 }
 
 .profile-card:hover {
@@ -1134,6 +1259,10 @@ export default {
 
 .card-body {
   padding: 1.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .user-avatar {
@@ -1255,6 +1384,10 @@ input:checked + .toggle-slider:before {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem; /* Space for scrollbar */
+  align-content: flex-start;
 }
 
 .interest-tag {
@@ -1488,6 +1621,9 @@ input:checked + .toggle-slider:before {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem; /* Space for scrollbar */
 }
 
 .friend-item {
@@ -1572,6 +1708,9 @@ input:checked + .toggle-slider:before {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem; /* Space for scrollbar */
 }
 
 .review-item {
@@ -1613,34 +1752,78 @@ input:checked + .toggle-slider:before {
   overflow: hidden;
 }
 
-/* Event Preferences Styles */
-.preferences-list {
+/* Recent Activity Styles */
+.loading-state {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+.no-activity {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  color: #9ca3af;
+}
+
+.activity-feed {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem; /* Space for scrollbar */
 }
 
-.preference-item {
+.activity-item {
   display: flex;
-  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: background-color 0.2s;
+}
+
+.activity-item:hover {
+  background: #f1f3f4;
+}
+
+.activity-icon {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
   align-items: center;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #e5e7eb;
+  justify-content: center;
+  background: white;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  font-size: 1rem;
 }
 
-.preference-item:last-child {
-  border-bottom: none;
+.activity-content {
+  flex: 1;
+  min-width: 0;
 }
 
-.preference-label {
-  font-weight: 500;
+.activity-text {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.875rem;
   color: #374151;
-  font-size: 0.875rem;
+  line-height: 1.4;
 }
 
-.preference-value {
+.activity-time {
+  margin: 0;
+  font-size: 0.75rem;
   color: #6b7280;
-  font-size: 0.875rem;
 }
 
 @media (max-width: 768px) {
