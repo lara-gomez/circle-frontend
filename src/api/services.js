@@ -45,7 +45,10 @@ export const eventAPI = {
     api.post('/Event/_getEventsByStatus', { status }),
   
   getAllEvents: () => 
-    api.post('/Event/_getAllEvents', {})
+    api.post('/Event/_getAllEvents', {}),
+
+  getEventsByRecommendationContext: (user, filters, priorities) =>
+    api.post('/Event/_getEventsByRecommendationContext', { user, filters, priorities }),
 }
 
 // User Interest API

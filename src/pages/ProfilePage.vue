@@ -101,6 +101,35 @@
                 </div>
               </div>
             </div>
+
+            <!-- Outgoing Requests -->
+            <div v-if="outgoingRequests.length > 0" class="friends-section">
+              <h4>Sent Requests ({{ outgoingRequests.length }})</h4>
+              <div class="pending-list">
+                <div 
+                  v-for="request in outgoingRequests" 
+                  :key="request.id"
+                  class="friend-item"
+                >
+                  <div class="friend-avatar">
+                    <span class="avatar-text">{{ getInitials(request.username) }}</span>
+                  </div>
+                  <div class="friend-info">
+                    <span class="friend-name">{{ request.username }}</span>
+                    <span class="request-status">Awaiting response</span>
+                  </div>
+                  <div class="friend-actions">
+                    <button 
+                      class="btn btn-sm btn-secondary" 
+                      @click="cancelFriendRequest(request.id)"
+                      :disabled="processingRequest === request.id"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -329,8 +358,7 @@ export default {
   },
   data() {
     return {
-      memberSince: 'January 2024',
-      interests: ['Technology', 'Vue.js', 'Machine Learning', 'Coffee'],
+      interests: [],
       stats: {
         eventsAttended: 0,
         reviewsWritten: 0,
@@ -342,6 +370,8 @@ export default {
       // Friends data
       acceptedFriends: [],
       pendingRequests: [],
+      outgoingRequests: [],
+      friendsPollInterval: null,
       showAddFriendModal: false,
       newFriendUsername: '',
       friendRequestError: '',
@@ -395,6 +425,27 @@ export default {
         .map(name => name.charAt(0))
         .join('')
         .toUpperCase()
+    },
+    memberSince() {
+      // Get registration date from localStorage
+      const registrationDate = localStorage.getItem('registrationDate')
+      
+      if (registrationDate) {
+        const date = new Date(registrationDate)
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December']
+        const month = monthNames[date.getMonth()]
+        const year = date.getFullYear()
+        return `${month} ${year}`
+      }
+      
+      // Fallback to current date if no registration date found
+      const now = new Date()
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December']
+      const month = monthNames[now.getMonth()]
+      const year = now.getFullYear()
+      return `${month} ${year}`
     }
   },
   async mounted() {
@@ -411,8 +462,33 @@ export default {
     await this.loadInterests()
     await this.loadStats()
     await this.loadRecentReviews()
+    
+    // Start polling for friend data changes
+    this.startFriendsPolling()
+  },
+  
+  beforeUnmount() {
+    // Clean up polling when leaving the page
+    this.stopFriendsPolling()
   },
   methods: {
+    // Polling methods for real-time updates
+    startFriendsPolling() {
+      // Poll every 5 seconds to check for friend data changes
+      this.friendsPollInterval = setInterval(() => {
+        this.loadFriendsData()
+      }, 5000)
+      console.log('Started friends polling')
+    },
+    
+    stopFriendsPolling() {
+      if (this.friendsPollInterval) {
+        clearInterval(this.friendsPollInterval)
+        this.friendsPollInterval = null
+        console.log('Stopped friends polling')
+      }
+    },
+    
     // Username methods
     async fetchUsername() {
       try {
@@ -540,9 +616,10 @@ export default {
     // Interests methods
     async loadInterests() {
       try {
-        const response = await interestAPI.getPersonalInterests(
-          this.user?.id || this.user?._id || 'user123'
-        )
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        console.log('Loading interests - User object:', this.user)
+        console.log('Loading interests - User ID:', userId)
+        const response = await interestAPI.getPersonalInterests(userId)
         const interestsData = response.data || []
         
         // Extract interest names if they're objects, otherwise use as strings
@@ -557,21 +634,138 @@ export default {
         })
       } catch (error) {
         console.error('Error loading interests:', error)
-        // Keep mock data on error
-        this.interests = ['Technology', 'Vue.js', 'Machine Learning', 'Coffee']
+        // On error, set to empty array (no fallback interests)
+        this.interests = []
       }
     },
 
     // Friends methods
     async loadFriendsData() {
       try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        console.log('Loading friends data - User ID:', userId)
+        
         // Load accepted friends
-        const friendsResponse = await friendingAPI.getFriends(this.user?.id || this.user?._id || 'user123')
-        this.acceptedFriends = friendsResponse.data || []
+        const friendsResponse = await friendingAPI.getFriends(userId)
+        console.log('Friends response:', friendsResponse)
+        console.log('Friends data:', friendsResponse.data)
+        
+        const rawFriends = friendsResponse.data || []
+        
+        // Fetch usernames for each friend
+        this.acceptedFriends = await Promise.all(
+          rawFriends.map(async (friendItem) => {
+            try {
+              // friendItem.friend is the user ID
+              const friendId = friendItem.friend
+              const usernameResponse = await authAPI.getUsername(friendId)
+              
+              let username = friendId
+              if (usernameResponse.data) {
+                if (Array.isArray(usernameResponse.data)) {
+                  username = usernameResponse.data[0]?.username || usernameResponse.data[0] || friendId
+                } else if (typeof usernameResponse.data === 'object' && usernameResponse.data.username) {
+                  username = usernameResponse.data.username
+                } else {
+                  username = usernameResponse.data
+                }
+              }
+              
+              return {
+                id: friendId,
+                username: username
+              }
+            } catch (error) {
+              console.error('Error fetching username for friend:', error)
+              return {
+                id: friendItem.friend,
+                username: friendItem.friend // Fallback to ID
+              }
+            }
+          })
+        )
+        
+        console.log('Processed friends:', this.acceptedFriends)
 
-        // Load pending requests
-        const requestsResponse = await friendingAPI.getIncomingRequests(this.user?.id || this.user?._id || 'user123')
-        this.pendingRequests = requestsResponse.data || []
+        // Load incoming requests
+        const requestsResponse = await friendingAPI.getIncomingRequests(userId)
+        console.log('Incoming requests response:', requestsResponse)
+        console.log('Incoming requests data:', requestsResponse.data)
+        
+        const rawPendingRequests = requestsResponse.data || []
+        
+        // Fetch usernames for each requester
+        this.pendingRequests = await Promise.all(
+          rawPendingRequests.map(async (request) => {
+            try {
+              // request.requester is the user ID who sent the request
+              const requesterId = request.requester
+              const usernameResponse = await authAPI.getUsername(requesterId)
+              
+              let username = requesterId
+              if (usernameResponse.data) {
+                if (Array.isArray(usernameResponse.data)) {
+                  username = usernameResponse.data[0]?.username || usernameResponse.data[0] || requesterId
+                } else if (typeof usernameResponse.data === 'object' && usernameResponse.data.username) {
+                  username = usernameResponse.data.username
+                } else {
+                  username = usernameResponse.data
+                }
+              }
+              
+              return {
+                id: requesterId, // Use requester ID as the ID for accept/reject
+                username: username
+              }
+            } catch (error) {
+              console.error('Error fetching username for requester:', error)
+              return {
+                id: request.requester,
+                username: request.requester // Fallback to ID
+              }
+            }
+          })
+        )
+
+        // Load outgoing requests
+        const outgoingResponse = await friendingAPI.getOutgoingRequests(userId)
+        console.log('Outgoing requests response:', outgoingResponse)
+        console.log('Outgoing requests data:', outgoingResponse.data)
+        
+        const rawOutgoingRequests = outgoingResponse.data || []
+        
+        // Fetch usernames for each target user
+        this.outgoingRequests = await Promise.all(
+          rawOutgoingRequests.map(async (request) => {
+            try {
+              // request.target is the user ID who received the request
+              const targetId = request.target
+              const usernameResponse = await authAPI.getUsername(targetId)
+              
+              let username = targetId
+              if (usernameResponse.data) {
+                if (Array.isArray(usernameResponse.data)) {
+                  username = usernameResponse.data[0]?.username || usernameResponse.data[0] || targetId
+                } else if (typeof usernameResponse.data === 'object' && usernameResponse.data.username) {
+                  username = usernameResponse.data.username
+                } else {
+                  username = usernameResponse.data
+                }
+              }
+              
+              return {
+                id: targetId, // Use target ID as the ID for cancel
+                username: username
+              }
+            } catch (error) {
+              console.error('Error fetching username for target:', error)
+              return {
+                id: request.target,
+                username: request.target // Fallback to ID
+              }
+            }
+          })
+        )
 
         // Update friends count in stats
         this.stats.friendsCount = this.acceptedFriends.length
@@ -580,6 +774,27 @@ export default {
         // Keep empty arrays on error
         this.acceptedFriends = []
         this.pendingRequests = []
+        this.outgoingRequests = []
+      }
+    },
+
+    async cancelFriendRequest(targetId) {
+      this.processingRequest = targetId
+      try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        await friendingAPI.removeFriendRequest(userId, targetId)
+        
+        // Reload friends data
+        await this.loadFriendsData()
+        
+        // Force Vue to update the DOM
+        await this.$nextTick()
+        this.$forceUpdate()
+      } catch (error) {
+        console.error('Error cancelling friend request:', error)
+        alert('Failed to cancel friend request. Please try again.')
+      } finally {
+        this.processingRequest = null
       }
     },
 
@@ -590,16 +805,73 @@ export default {
       this.friendRequestError = ''
 
       try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const targetUsername = this.newFriendUsername.trim()
+        
+        console.log('Sending friend request - From user:', userId)
+        console.log('Sending friend request - To username:', targetUsername)
+        
+        // First, get the user ID from the username
+        const targetUserResponse = await authAPI.getUserByUsername(targetUsername)
+        console.log('Target user response:', targetUserResponse)
+        
+        if (!targetUserResponse.data || targetUserResponse.data.length === 0) {
+          throw new Error('User not found')
+        }
+        
+        const targetUserId = targetUserResponse.data[0].user || targetUserResponse.data[0].id || targetUserResponse.data[0]._id
+        console.log('Target user ID:', targetUserId)
+        
+        // Check if they've already sent you a request
+        const hasIncomingRequest = this.pendingRequests.some(req => req.id === targetUserId)
+        if (hasIncomingRequest) {
+          this.friendRequestError = 'This user has already sent you a friend request. Please accept or reject it first.'
+          console.log('User has already sent a request')
+          return
+        }
+        
+        // Check if you've already sent them a request
+        const hasOutgoingRequest = this.outgoingRequests.some(req => req.id === targetUserId)
+        if (hasOutgoingRequest) {
+          this.friendRequestError = 'You have already sent this user a friend request.'
+          console.log('Already sent request to this user')
+          return
+        }
+        
+        // Check if you're already friends
+        const alreadyFriends = this.acceptedFriends.some(friend => friend.id === targetUserId)
+        if (alreadyFriends) {
+          this.friendRequestError = 'You are already friends with this user.'
+          console.log('Already friends with this user')
+          return
+        }
+        
+        // Now send the friend request with user IDs
         await friendingAPI.sendFriendRequest(
-          this.user?.id || this.user?._id || 'user123',
-          this.newFriendUsername.trim()
+          userId,
+          targetUserId
         )
         
+        console.log('Friend request sent successfully')
         this.closeAddFriendModal()
-        // Optionally show success message
+        // Reload friends data to show the new outgoing request
+        await this.loadFriendsData()
+        
+        // Force Vue to update the DOM
+        await this.$nextTick()
+        this.$forceUpdate()
       } catch (error) {
         console.error('Error sending friend request:', error)
-        this.friendRequestError = error.response?.data?.error || 'Failed to send friend request'
+        
+        // Display appropriate error message from backend
+        let errorMessage = 'Failed to send friend request'
+        if (error.response?.data?.error) {
+          errorMessage = error.response.data.error
+        } else if (error.message) {
+          errorMessage = error.message
+        }
+        
+        this.friendRequestError = errorMessage
       } finally {
         this.sendingFriendRequest = false
       }
@@ -608,16 +880,27 @@ export default {
     async acceptFriendRequest(requestId) {
       this.processingRequest = requestId
       try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        console.log('Accepting friend request - Requester ID:', requestId)
+        console.log('Accepting friend request - Target ID (current user):', userId)
+        
         await friendingAPI.acceptFriendRequest(
           requestId,
-          this.user?.id || this.user?._id || 'user123'
+          userId
         )
+        
+        console.log('Friend request accepted successfully')
         
         // Reload friends data and stats
         await this.loadFriendsData()
         await this.loadStats()
+        
+        // Force Vue to update the DOM
+        await this.$nextTick()
+        this.$forceUpdate()
       } catch (error) {
         console.error('Error accepting friend request:', error)
+        alert('Failed to accept friend request. Please try again.')
       } finally {
         this.processingRequest = null
       }
@@ -626,16 +909,27 @@ export default {
     async rejectFriendRequest(requestId) {
       this.processingRequest = requestId
       try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        console.log('Rejecting friend request - Requester ID:', requestId)
+        console.log('Rejecting friend request - Target ID (current user):', userId)
+        
         await friendingAPI.removeFriendRequest(
           requestId,
-          this.user?.id || this.user?._id || 'user123'
+          userId
         )
+        
+        console.log('Friend request rejected successfully')
         
         // Reload friends data and stats
         await this.loadFriendsData()
         await this.loadStats()
+        
+        // Force Vue to update the DOM
+        await this.$nextTick()
+        this.$forceUpdate()
       } catch (error) {
         console.error('Error rejecting friend request:', error)
+        alert('Failed to reject friend request. Please try again.')
       } finally {
         this.processingRequest = null
       }
@@ -648,14 +942,19 @@ export default {
 
       this.processingRequest = friendId
       try {
+        const userId = this.user?.id || this.user?._id || this.user || 'user123'
         await friendingAPI.removeFriend(
-          this.user?.id || this.user?._id || 'user123',
+          userId,
           friendId
         )
         
         // Reload friends data and stats
         await this.loadFriendsData()
         await this.loadStats()
+        
+        // Force Vue to update the DOM
+        await this.$nextTick()
+        this.$forceUpdate()
       } catch (error) {
         console.error('Error removing friend:', error)
         alert('Failed to remove friend. Please try again.')
@@ -683,8 +982,11 @@ export default {
     async addInterest() {
       if (this.newInterest.trim() && !this.interests.includes(this.newInterest.trim())) {
         try {
+          const userId = this.user?.id || this.user?._id || this.user || 'user123'
+          console.log('Adding interest - User object:', this.user)
+          console.log('Adding interest - User ID:', userId)
           await interestAPI.addPersonalInterest(
-            this.user?.id || this.user?._id || 'user123',
+            userId,
             this.newInterest.trim()
           )
           
@@ -704,8 +1006,9 @@ export default {
       const index = this.interests.indexOf(interest)
       if (index > -1) {
         try {
+          const userId = this.user?.id || this.user?._id || this.user || 'user123'
           await interestAPI.removePersonalInterest(
-            this.user?.id || this.user?._id || 'user123',
+            userId,
             interest
           )
           

@@ -30,23 +30,28 @@
   <div v-else class="events-list">
     <div class="section-header">
       <h3>Your Events</h3>
-      <div class="section-actions">
-        <div class="search-container">
-          <input 
-            v-model="searchQuery"
-            type="text" 
-            placeholder="Search events..."
-            class="search-input"
-          />
+    </div>
+    
+    <!-- Search Section -->
+    <div class="search-section">
+      <div class="search-container">
+        <input 
+          v-model="searchQuery"
+          type="text" 
+          placeholder="Search events by name, location, or description..."
+          class="search-input"
+        />
+        <div class="search-results-info" v-if="searchQuery.trim()">
+          Showing {{ sortedUserEvents.length }} of {{ userEvents.length }} events
         </div>
-        <button 
-          @click="loadEvents" 
-          class="btn btn-refresh"
-          :disabled="loading"
-        >
-          {{ loading ? 'Loading...' : 'Refresh' }}
-        </button>
       </div>
+      <button 
+        @click="loadEvents" 
+        class="btn btn-refresh"
+        :disabled="loading"
+      >
+        {{ loading ? 'Loading...' : 'Refresh' }}
+      </button>
     </div>
       
       <div class="events-grid">
@@ -78,6 +83,10 @@
               <div class="info-item">
                 <span class="icon">👥</span>
                 <span>{{ event.attendees || 0 }} attendees</span>
+              </div>
+              <div class="info-item">
+                <span class="icon">⭐</span>
+                <span>{{ getInterestedUsersCount(event._id) }} interested</span>
               </div>
             </div>
             <p class="event-description">{{ event.description }}</p>
@@ -393,6 +402,7 @@ export default {
       eventReviews: [],
       loadingReviews: false,
       reviewerUsernames: {}, // Cache for reviewer usernames
+      interestedUsersCount: {}, // Cache for interested users count per event
       eventForm: {
         name: '',
         date: '',
@@ -485,6 +495,9 @@ export default {
         
         // Load organizer usernames for user events
         await this.loadOrganizerUsernames(this.userEvents)
+        
+        // Load interested users count for each event
+        await this.loadInterestedUsersCount(this.userEvents)
         
         // No mock data fallback - only show real events
       } catch (error) {
@@ -687,6 +700,20 @@ export default {
           }
         }
       }
+    },
+
+    async loadInterestedUsersCount(events) {
+      // Initialize counts for all events
+      for (const event of events) {
+        this.interestedUsersCount[event._id] = 0
+      }
+      
+      console.log('Note: Interested users count requires backend API support.')
+      console.log('This feature shows 0 until backend implements an endpoint to get all users interested in an event.')
+    },
+
+    getInterestedUsersCount(eventId) {
+      return this.interestedUsersCount[eventId] || 0
     },
 
     getOrganizerUsername(organizerId) {
@@ -974,9 +1001,6 @@ export default {
   margin-bottom: 5rem; /* More spacing */
 }
 
-.section-header {
-  margin-bottom: 3rem; /* More spacing */
-}
 
 .section-header h3 {
   color: #2f3e46; /* Updated color */
@@ -991,23 +1015,45 @@ export default {
   gap: 1rem;
 }
 
+.search-section {
+  margin-bottom: 2rem;
+  padding: 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .search-container {
-  position: relative;
+  flex: 1;
+  min-width: 500px;
+  max-width: 1200px;
 }
 
 .search-input {
-  padding: 0.5rem 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  width: 250px;
-  transition: border-color 0.2s ease;
+  width: 100%;
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .search-input:focus {
   outline: none;
   border-color: #84a98c;
-  box-shadow: 0 0 0 2px rgba(132, 169, 140, 0.1);
+  box-shadow: 0 0 0 3px rgba(132, 169, 140, 0.1);
+}
+
+.search-results-info {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-align: center;
 }
 
 .btn-refresh {

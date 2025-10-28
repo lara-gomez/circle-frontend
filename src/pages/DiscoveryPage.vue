@@ -59,6 +59,26 @@
         @bookmark-changed="handleBookmarkChange"
       />
     </div>
+
+    <!-- All Events Section -->
+    <div v-if="!loading && allEvents.length > 0" class="all-events-section">
+      <div class="section-header">
+        <h3>All Events</h3>
+      </div>
+      
+      <div class="events-grid">
+        <EventCard
+          v-for="event in allEvents"
+          :key="event._id"
+          :event="event"
+          :current-user="currentUser"
+          :friends-attending="friendsAttendingMap[event._id] || []"
+          :is-interested="isUserInterested(event._id)"
+          @interest-changed="handleInterestChange"
+          @bookmark-changed="handleBookmarkChange"
+        />
+      </div>
+    </div>
   </section>
 </template>
 
@@ -85,6 +105,7 @@ export default {
   data() {
     return {
       recommendedEvents: [],
+      allEvents: [],
       friends: [],
       recentEvent: null,
       loading: true,
@@ -119,30 +140,68 @@ export default {
     async loadRecommendedEvents() {
       this.loading = true
       try {
-        const response = await eventAPI.getEventsByStatus('upcoming')
-        const allEvents = response.data || []
+        // Get user's personal interests for filtering
+        const userInterestsResponse = await interestAPI.getPersonalInterests(this.currentUser)
+        const userInterests = (userInterestsResponse.data || []).map(item => item.tag || item.name || item)
+        
+        console.log('User interests:', userInterests)
+        
+        // Call recommendation API with user's interests as filters
+        // Convert arrays to strings as expected by the API
+        const filtersStr = userInterests.join(',')
+        const prioritiesStr = 'upcoming'
+        
+        console.log('Calling recommendation API with:', {
+          user: this.currentUser,
+          filters: filtersStr,
+          priorities: prioritiesStr
+        })
+        
+        const recommendationResponse = await eventAPI.getEventsByRecommendationContext(
+          this.currentUser,
+          filtersStr,
+          prioritiesStr
+        )
+        
+        const recommendedEventsData = recommendationResponse.data || []
+        
+        // Load all upcoming events
+        const allEventsResponse = await eventAPI.getEventsByStatus('upcoming')
+        const allEventsData = allEventsResponse.data || []
         
         // Filter out events that have passed their end time
         const now = new Date()
-        this.recommendedEvents = allEvents.filter(event => {
-          if (!event.date || !event.duration) return true // Keep events with missing data
-          
-          const eventStartTime = new Date(event.date)
-          const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
-          
-          // Only show events that haven't ended yet
-          return eventEndTime > now
-        })
+        const filterActiveEvents = (events) => {
+          return events.filter(event => {
+            if (!event.date || !event.duration) return true
+            
+            const eventStartTime = new Date(event.date)
+            const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
+            
+            return eventEndTime > now
+          })
+        }
+        
+        this.recommendedEvents = filterActiveEvents(recommendedEventsData)
+        
+        // All events are the ones not in recommended
+        const recommendedIds = new Set(this.recommendedEvents.map(e => e._id))
+        const allFilteredEvents = filterActiveEvents(allEventsData)
+        this.allEvents = allFilteredEvents.filter(event => !recommendedIds.has(event._id))
 
         // Load friends attending data for each event
         await this.loadFriendsAttendingData()
         
         // Load user's current interests to initialize event cards
         await this.loadUserInterests()
+        
+        console.log('Recommended events:', this.recommendedEvents.length)
+        console.log('All other events:', this.allEvents.length)
       } catch (error) {
         console.error('Error loading events:', error)
         // Keep empty array on error
         this.recommendedEvents = []
+        this.allEvents = []
       } finally {
         this.loading = false
       }
@@ -492,6 +551,10 @@ export default {
   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); /* Larger cards for desktop */
   gap: 3rem; /* More spacing between cards */
   max-width: none;
+}
+
+.all-events-section {
+  margin-top: 4rem;
 }
 
 /* Recent Event Reminder Styles */

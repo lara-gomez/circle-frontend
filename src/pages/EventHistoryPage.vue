@@ -5,6 +5,21 @@
     <p>Review and manage your past event experiences.</p>
   </section>
 
+  <!-- Search Section -->
+  <div v-if="!loading && pastEvents.length > 0" class="search-section">
+    <div class="search-container">
+      <input 
+        v-model="searchQuery"
+        type="text" 
+        placeholder="Search events by name, location, or description..."
+        class="search-input"
+      />
+      <div class="search-results-info" v-if="searchQuery.trim()">
+        Showing {{ filteredPastEvents.length }} of {{ pastEvents.length }} events
+      </div>
+    </div>
+  </div>
+
     <!-- Loading State -->
     <div v-if="loading" class="loading">
       <div class="loading-spinner"></div>
@@ -26,7 +41,7 @@
     <!-- Events List -->
     <div v-else class="events-list">
       <div 
-        v-for="event in pastEvents" 
+        v-for="event in filteredPastEvents" 
         :key="event._id" 
         class="event-history-card"
       >
@@ -35,8 +50,8 @@
             <h3 class="event-title">{{ event.name }}</h3>
             <div class="event-date">{{ formatDate(event.date) }}</div>
           </div>
-          <div class="event-status" :class="statusClass(event.status)">
-            {{ event.status }}
+          <div class="event-status" :class="getStatusClass(event)">
+            {{ getEventStatus(event) }}
           </div>
         </div>
 
@@ -194,6 +209,7 @@ export default {
       saving: false,
       organizerUsernames: {}, // Cache for organizer usernames
       deletingReview: null, // Track which review is being deleted
+      searchQuery: '', // Search input
       reviewForm: {
         rating: 0,
         entry: ''
@@ -203,6 +219,19 @@ export default {
   computed: {
     currentUser() {
       return this.user?.id || this.user?._id || this.user || 'user123'
+    },
+    
+    filteredPastEvents() {
+      if (!this.searchQuery.trim()) {
+        return this.pastEvents
+      }
+      
+      const query = this.searchQuery.toLowerCase()
+      return this.pastEvents.filter(event => 
+        event.name.toLowerCase().includes(query) ||
+        event.location.toLowerCase().includes(query) ||
+        (event.description && event.description.toLowerCase().includes(query))
+      )
     }
   },
   async mounted() {
@@ -470,6 +499,36 @@ export default {
       } finally {
         this.deletingReview = null
       }
+    },
+
+    // Status calculation methods (same as EventManagerPage)
+    getEventStatus(event) {
+      // If event is explicitly cancelled, show cancelled
+      if (event.status === 'cancelled') {
+        return 'cancelled'
+      }
+      
+      const now = new Date()
+      const eventStartTime = new Date(event.date)
+      const eventEndTime = new Date(eventStartTime.getTime() + (event.duration || 60) * 60000)
+      
+      if (eventEndTime <= now) {
+        return 'completed'
+      } else if (eventStartTime <= now && now < eventEndTime) {
+        return 'in-progress'
+      } else {
+        return 'upcoming'
+      }
+    },
+
+    getStatusClass(event) {
+      const status = this.getEventStatus(event)
+      return {
+        'status-upcoming': status === 'upcoming',
+        'status-in-progress': status === 'in-progress',
+        'status-completed': status === 'completed',
+        'status-cancelled': status === 'cancelled'
+      }
     }
   }
 }
@@ -496,6 +555,40 @@ export default {
   max-width: 700px; /* Wider max-width */
   margin: 0 auto;
   line-height: 1.7; /* Better line height */
+}
+
+.search-section {
+  margin-bottom: 2rem;
+  padding: 0 1rem;
+}
+
+.search-container {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.search-input {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #84a98c;
+  box-shadow: 0 0 0 3px rgba(132, 169, 140, 0.1);
+}
+
+.search-results-info {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-align: center;
 }
 
 .loading {
@@ -611,6 +704,11 @@ export default {
 .status-completed {
   background-color: #e8f4fd;
   color: #1e40af;
+}
+
+.status-in-progress {
+  background-color: #fff3cd;
+  color: #856404;
 }
 
 .event-details {
