@@ -42,10 +42,16 @@
         
       </div>
       
-      <div class="friends-attending" v-if="friendsAttending.length > 0">
+      <div class="friends-interested" v-if="friendsAttending.length > 0" 
+           @mouseenter="showTooltip = true"
+           @mouseleave="showTooltip = false">
         <div class="friends-info">
           <span class="friends-icon">👥</span>
-          <span class="friends-count">{{ friendsAttending.length }} friend{{ friendsAttending.length !== 1 ? 's' : '' }} attending</span>
+          <span class="friends-count">{{ friendsAttending.length }} friend{{ friendsAttending.length !== 1 ? 's' : '' }} interested</span>
+        </div>
+        <!-- Custom tooltip -->
+        <div v-if="showTooltip" class="custom-tooltip">
+          {{ getFriendsTooltipText() }}
         </div>
         <div class="friends-avatars">
           <div 
@@ -98,7 +104,8 @@ export default {
   data() {
     return {
       loading: false,
-      organizerUsername: null
+      organizerUsername: null,
+      showTooltip: false
     }
   },
   computed: {
@@ -146,13 +153,29 @@ export default {
     
 
     getFriendInitials(username) {
-      if (!username) return '?'
-      return username
-        .split(' ')
-        .map(name => name.charAt(0))
+      if (!username || typeof username !== 'string') {
+        console.log('Invalid username for initials:', username, typeof username)
+        return '?'
+      }
+      // For usernames like "new_test", split by underscore and take first letter of each part
+      const parts = username.split(/[_\s-]/) // Split by underscore, space, or hyphen
+      return parts
+        .map(part => part.charAt(0))
         .join('')
         .toUpperCase()
         .slice(0, 2)
+    },
+
+    getFriendsTooltipText() {
+      if (!this.friendsAttending || this.friendsAttending.length === 0) {
+        return 'No friends interested'
+      }
+      
+      const usernames = this.friendsAttending.map(friend => {
+        return friend.username || friend.id || 'Unknown'
+      })
+      
+      return `Friends interested: ${usernames.join(', ')}`
     },
     
     async fetchOrganizerUsername() {
@@ -319,7 +342,7 @@ export default {
 }
 
 
-.friends-attending {
+.friends-interested {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -330,6 +353,7 @@ export default {
   background: #f8f9fa;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
+  position: relative;
 }
 
 .friends-info {
@@ -397,5 +421,31 @@ export default {
   .btn {
     justify-content: center;
   }
+}
+
+.custom-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2f3e46;
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.5rem;
+}
+
+.custom-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #2f3e46;
 }
 </style>

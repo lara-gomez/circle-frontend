@@ -505,7 +505,10 @@ export default {
     async loadStats() {
       this.loadingStats = true
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         console.log('ProfilePage - Loading stats for user ID:', userId)
         console.log('ProfilePage - User object:', this.user)
         
@@ -576,7 +579,10 @@ export default {
     // Recent reviews methods
     async loadRecentReviews() {
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         const response = await reviewingAPI.getReviewsByUser(userId)
         
         // Extract the actual review objects from the nested structure
@@ -616,7 +622,10 @@ export default {
     // Interests methods
     async loadInterests() {
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         console.log('Loading interests - User object:', this.user)
         console.log('Loading interests - User ID:', userId)
         const response = await interestAPI.getPersonalInterests(userId)
@@ -642,7 +651,10 @@ export default {
     // Friends methods
     async loadFriendsData() {
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         console.log('Loading friends data - User ID:', userId)
         
         // Load accepted friends
@@ -781,7 +793,10 @@ export default {
     async cancelFriendRequest(targetId) {
       this.processingRequest = targetId
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         await friendingAPI.removeFriendRequest(userId, targetId)
         
         // Reload friends data
@@ -805,7 +820,10 @@ export default {
       this.friendRequestError = ''
 
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         const targetUsername = this.newFriendUsername.trim()
         
         console.log('Sending friend request - From user:', userId)
@@ -880,7 +898,10 @@ export default {
     async acceptFriendRequest(requestId) {
       this.processingRequest = requestId
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         console.log('Accepting friend request - Requester ID:', requestId)
         console.log('Accepting friend request - Target ID (current user):', userId)
         
@@ -909,7 +930,10 @@ export default {
     async rejectFriendRequest(requestId) {
       this.processingRequest = requestId
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         console.log('Rejecting friend request - Requester ID:', requestId)
         console.log('Rejecting friend request - Target ID (current user):', userId)
         
@@ -942,7 +966,10 @@ export default {
 
       this.processingRequest = friendId
       try {
-        const userId = this.user?.id || this.user?._id || this.user || 'user123'
+        const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
         await friendingAPI.removeFriend(
           userId,
           friendId
@@ -982,7 +1009,10 @@ export default {
     async addInterest() {
       if (this.newInterest.trim() && !this.interests.includes(this.newInterest.trim())) {
         try {
-          const userId = this.user?.id || this.user?._id || this.user || 'user123'
+          const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
           console.log('Adding interest - User object:', this.user)
           console.log('Adding interest - User ID:', userId)
           await interestAPI.addPersonalInterest(
@@ -1006,7 +1036,10 @@ export default {
       const index = this.interests.indexOf(interest)
       if (index > -1) {
         try {
-          const userId = this.user?.id || this.user?._id || this.user || 'user123'
+          const userId = this.user
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
           await interestAPI.removePersonalInterest(
             userId,
             interest

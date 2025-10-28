@@ -69,7 +69,10 @@ export const interestAPI = {
     api.post('/UserInterest/_getPersonalInterests', { user }),
   
   getItemInterests: (user) => 
-    api.post('/UserInterest/_getItemInterests', { user })
+    api.post('/UserInterest/_getItemInterests', { user }),
+
+  getUsersInterestedInItems: (item) => 
+    api.post('/UserInterest/_getUsersInterestedInItems', { item })
 }
 
 // Friending API

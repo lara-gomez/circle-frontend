@@ -115,13 +115,19 @@ export default {
   },
   computed: {
     currentUser() {
-      return this.user?.id || this.user?._id || this.user || 'user123'
+      const userId = this.user
+      if (!userId) {
+        console.error('User not authenticated')
+        this.$router.push('/login')
+        return '' // Temporary fallback for computed property
+      }
+      return userId
     }
   },
   async mounted() {
     await this.initializeUser()
-    await this.loadRecommendedEvents()
     await this.loadFriends()
+    await this.loadRecommendedEvents()
     await this.loadRecentEvent()
   },
   methods: {
@@ -209,52 +215,126 @@ export default {
 
     async loadFriends() {
       try {
+        console.log('Loading friends for user:', this.currentUser)
         const response = await friendingAPI.getFriends(this.currentUser)
+        console.log('Raw friends API response:', response)
         this.friends = response.data || []
+        console.log('Processed friends array:', this.friends)
       } catch (error) {
         console.error('Error loading friends:', error)
         this.friends = this.getMockFriends()
+        console.log('Using mock friends:', this.friends.length, this.friends)
       }
+    },
+
+    async fetchFriendUsername(friendId) {
+      try {
+        // Fetching username for friend
+        const { authAPI } = await import('../api/services.js')
+        const response = await authAPI.getUsername(friendId)
+        // Username API response received
+        
+        // Handle different response structures
+        let username = friendId // fallback
+        if (response.data) {
+          if (typeof response.data === 'string') {
+            username = response.data
+          } else if (Array.isArray(response.data) && response.data.length > 0) {
+            // Handle array response: [{username: 'new_test'}]
+            const userData = response.data[0]
+            if (userData.username) {
+              username = userData.username
+            } else if (userData.user) {
+              username = userData.user
+            }
+          } else if (response.data.username) {
+            username = response.data.username
+          } else if (response.data.user) {
+            username = response.data.user
+          } else if (response.data.id) {
+            // Sometimes the response might be the user object itself
+            username = response.data.id
+          }
+        }
+        
+        // If we still have the user ID, try to extract username from the response structure
+        if (username === friendId && response.data) {
+          console.log(`⚠️ Username extraction failed, trying alternative approaches...`)
+          // Try to find any string field that looks like a username
+          const dataStr = JSON.stringify(response.data)
+          console.log(`📋 Raw response data as string:`, dataStr)
+        }
+        
+        return username
+      } catch (error) {
+        console.error(`Error fetching username for ${friendId}:`, error)
+        return friendId
+      }
+    },
+
+    getMockFriends() {
+      // Mock friends data for testing
+      return [
+        { id: 'friend1', username: 'Alice', name: 'Alice' },
+        { id: 'friend2', username: 'Bob', name: 'Bob' },
+        { id: 'friend3', username: 'Charlie', name: 'Charlie' }
+      ]
     },
 
     async loadFriendsAttendingData() {
       // OPTIMIZED: This function now fetches friends and their interests efficiently
-      // Instead of N×M API calls (N events × M friends), it makes only 1 + M calls:
-      // - 1 call to get all friends
+      // Instead of N×M API calls (N events × M friends), it makes only M calls:
+      // - Uses already loaded friends from this.friends
       // - M parallel calls to get each friend's interests
       // Then builds an efficient in-memory mapping of eventId → friends attending
       try {
-        // Step 1: Get all friends once
-        const friendsResponse = await friendingAPI.getFriends(this.currentUser)
-        const allFriends = friendsResponse.data || []
+        // Step 1: Use already loaded friends
+        const allFriends = this.friends || []
+        
+        console.log('Found friends:', allFriends.length, allFriends)
         
         if (allFriends.length === 0) {
           // Initialize empty map for all events
           this.friendsAttendingMap = {}
-          this.recommendedEvents.forEach(event => {
+          this.recommendedEvents.concat(this.allEvents).forEach(event => {
             this.friendsAttendingMap[event._id] = []
           })
           return
         }
 
-        // Step 2: Get all friends' interests in parallel (one call per friend)
+        // Step 2: Get all friends' interests and usernames in parallel
         const friendInterestsPromises = allFriends.map(async (friend) => {
           try {
-            const friendInterestsResponse = await interestAPI.getItemInterests(friend.id || friend._id)
+            console.log(`Friend object structure:`, friend)
+            const friendId = friend.id || friend._id || friend.friend || friend
+            console.log(`Extracted friend ID: ${friendId}`)
+            
+            // Get friend's interests and username in parallel
+            const [friendInterestsResponse, usernameResponse] = await Promise.all([
+              interestAPI.getItemInterests(friendId),
+              this.fetchFriendUsername(friendId)
+            ])
+            
             const interests = friendInterestsResponse.data || []
+            const username = usernameResponse || friendId
+            console.log(`📊 Friend ${friendId} interests:`, interests)
+            console.log(`👤 Friend ${friendId} username:`, username)
+            console.log(`🔧 Creating friend object:`, { id: friendId, username: username })
+            
             return {
               friend: {
-                id: friend.id || friend._id,
-                username: friend.username || friend.name
+                id: friendId,
+                username: username
               },
               interestedEvents: interests.map(interest => interest.item)
             }
           } catch (error) {
-            console.error(`Error getting interests for friend ${friend.username}:`, error)
+            console.error(`Error getting interests for friend:`, error)
+            const friendId = friend.id || friend._id || friend.friend || friend
             return {
               friend: {
-                id: friend.id || friend._id,
-                username: friend.username || friend.name
+                id: friendId,
+                username: friendId // fallback to ID if username fetch fails
               },
               interestedEvents: []
             }
@@ -267,18 +347,24 @@ export default {
         this.friendsAttendingMap = {}
         
         // Initialize all events with empty arrays
-        this.recommendedEvents.forEach(event => {
+        this.recommendedEvents.concat(this.allEvents).forEach(event => {
           this.friendsAttendingMap[event._id] = []
         })
 
         // Build the mapping efficiently
         friendInterestsResults.forEach(({ friend, interestedEvents }) => {
+          console.log(`Processing friend ${friend.username} (${friend.id}) with ${interestedEvents.length} interested events:`, interestedEvents)
           interestedEvents.forEach(eventId => {
             if (this.friendsAttendingMap.hasOwnProperty(eventId)) {
               this.friendsAttendingMap[eventId].push(friend)
+              console.log(`Added friend ${friend.username} to event ${eventId}`)
+            } else {
+              console.log(`Event ${eventId} not found in friendsAttendingMap`)
             }
           })
         })
+
+        console.log('Friends attending map:', this.friendsAttendingMap)
 
       } catch (error) {
         console.error('Error loading friends attending data:', error)
@@ -291,7 +377,7 @@ export default {
       // Initialize with mock data for all events
       this.friendsAttendingMap = {}
       
-      this.recommendedEvents.forEach(event => {
+      this.recommendedEvents.concat(this.allEvents).forEach(event => {
         this.friendsAttendingMap[event._id] = this.getMockFriendsAttending(event._id)
       })
     },
@@ -404,6 +490,15 @@ export default {
     
     async refreshEvents() {
       await this.loadRecommendedEvents()
+    },
+
+    // Debug method to manually refresh friends attending data
+    async debugRefreshFriendsAttending() {
+      console.log('Debug: Refreshing friends attending data...')
+      console.log('Current friends:', this.friends)
+      console.log('Current events:', this.recommendedEvents.length + this.allEvents.length)
+      await this.loadFriendsAttendingData()
+      console.log('Updated friends attending map:', this.friendsAttendingMap)
     },
     
     isUserInterested(eventId) {

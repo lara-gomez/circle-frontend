@@ -218,7 +218,13 @@ export default {
   },
   computed: {
     currentUser() {
-      return this.user?.id || this.user?._id || this.user || 'user123'
+      const userId = this.user
+      if (!userId) {
+        console.error('User not authenticated')
+        this.$router.push('/login')
+        return '' // Temporary fallback for computed property
+      }
+      return userId
     },
     
     filteredPastEvents() {

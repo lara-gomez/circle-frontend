@@ -60,13 +60,28 @@ export function useAuth() {
         throw new Error('No user data received from server')
       }
       
-      // Update state
+      // Normalize user ID - extract ID from object or use string directly
+      let userId = null
+      if (typeof userData === 'string') {
+        userId = userData
+      } else if (typeof userData === 'object' && userData !== null) {
+        userId = userData.id || userData._id || userData.user || null
+      }
+      
+      if (!userId) {
+        console.error('Login - Could not extract user ID from:', userData)
+        throw new Error('Invalid user data format received from server')
+      }
+      
+      console.log('Login - Normalized user ID:', userId)
+      
+      // Update state - store only the user ID
       isAuthenticated.value = true
-      user.value = userData
+      user.value = userId
       
       // Store in localStorage
       localStorage.setItem('isAuthenticated', 'true')
-      localStorage.setItem('user', JSON.stringify(userData))
+      localStorage.setItem('user', JSON.stringify(userId))
       console.log('Login - User stored in localStorage')
       
       // Preserve registration date if it exists, otherwise set it to now
@@ -74,7 +89,7 @@ export function useAuth() {
         localStorage.setItem('registrationDate', new Date().toISOString())
       }
       
-      return userData
+      return userId
     } catch (error) {
       throw error
     } finally {
@@ -99,19 +114,34 @@ export function useAuth() {
         throw new Error('No user data received from server')
       }
       
-      // Update state
+      // Normalize user ID - extract ID from object or use string directly
+      let userId = null
+      if (typeof userData === 'string') {
+        userId = userData
+      } else if (typeof userData === 'object' && userData !== null) {
+        userId = userData.id || userData._id || userData.user || null
+      }
+      
+      if (!userId) {
+        console.error('Register - Could not extract user ID from:', userData)
+        throw new Error('Invalid user data format received from server')
+      }
+      
+      console.log('Register - Normalized user ID:', userId)
+      
+      // Update state - store only the user ID
       isAuthenticated.value = true
-      user.value = userData
+      user.value = userId
       
       // Store in localStorage
       localStorage.setItem('isAuthenticated', 'true')
-      localStorage.setItem('user', JSON.stringify(userData))
+      localStorage.setItem('user', JSON.stringify(userId))
       console.log('Register - User stored in localStorage')
       
       // Store registration date
       localStorage.setItem('registrationDate', new Date().toISOString())
       
-      return userData
+      return userId
     } catch (error) {
       throw error
     } finally {

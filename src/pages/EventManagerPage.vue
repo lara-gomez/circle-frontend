@@ -30,6 +30,15 @@
   <div v-else class="events-list">
     <div class="section-header">
       <h3>Your Events</h3>
+      <div class="section-actions">
+        <button 
+          @click="loadEvents" 
+          class="btn btn-refresh"
+          :disabled="loading"
+        >
+          {{ loading ? 'Loading...' : 'Refresh' }}
+        </button>
+      </div>
     </div>
     
     <!-- Search Section -->
@@ -45,13 +54,6 @@
           Showing {{ sortedUserEvents.length }} of {{ userEvents.length }} events
         </div>
       </div>
-      <button 
-        @click="loadEvents" 
-        class="btn btn-refresh"
-        :disabled="loading"
-      >
-        {{ loading ? 'Loading...' : 'Refresh' }}
-      </button>
     </div>
       
       <div class="events-grid">
@@ -82,10 +84,6 @@
               </div>
               <div class="info-item">
                 <span class="icon">👥</span>
-                <span>{{ event.attendees || 0 }} attendees</span>
-              </div>
-              <div class="info-item">
-                <span class="icon">⭐</span>
                 <span>{{ getInterestedUsersCount(event._id) }} interested</span>
               </div>
             </div>
@@ -170,11 +168,11 @@
         </div>
       </div>
       
-      <div v-else class="events-list">
+      <div v-else class="events-grid">
         <div 
           v-for="event in interestedEvents.filter(e => e && e._id)" 
           :key="event._id" 
-          class="event-manager-card interested-event"
+          class="event-manager-card"
         >
           <div class="event-header">
             <div class="event-title-section">
@@ -414,7 +412,13 @@ export default {
   },
   computed: {
     currentUser() {
-      return this.user?.id || this.user?._id || this.user || 'user123'
+      const userId = this.user
+      if (!userId) {
+        console.error('User not authenticated')
+        this.$router.push('/login')
+        return '' // Temporary fallback for computed property
+      }
+      return userId
     },
     isFormValid() {
       return this.eventForm.name.trim() && 
@@ -470,6 +474,15 @@ export default {
     await this.initializeUser()
     await this.loadEvents()
     await this.loadInterestedEvents()
+  },
+  
+  async activated() {
+    // Called when component is activated (for keep-alive components)
+    // Refresh interested counts when user returns to this page
+    if (this.userEvents && this.userEvents.length > 0) {
+      console.log('EventManagerPage activated - refreshing interested counts')
+      await this.loadInterestedUsersCount(this.userEvents)
+    }
   },
   methods: {
     async initializeUser() {
@@ -703,17 +716,92 @@ export default {
     },
 
     async loadInterestedUsersCount(events) {
-      // Initialize counts for all events
-      for (const event of events) {
-        this.interestedUsersCount[event._id] = 0
+      if (!events || events.length === 0) {
+        return
       }
       
-      console.log('Note: Interested users count requires backend API support.')
-      console.log('This feature shows 0 until backend implements an endpoint to get all users interested in an event.')
+      try {
+        // Initialize all counts to 0
+        for (const event of events) {
+          this.interestedUsersCount[event._id] = 0
+        }
+        
+        console.log('Loading interested counts for events:', events.map(e => e._id))
+        
+        // Try to call the API for each event individually
+        const promises = events.map(async (event) => {
+          try {
+            const response = await interestAPI.getUsersInterestedInItems(event._id)
+            
+            if (response.data && Array.isArray(response.data)) {
+              this.interestedUsersCount[event._id] = response.data.length
+              console.log(`Event ${event._id}: ${response.data.length} interested`)
+            } else {
+              this.interestedUsersCount[event._id] = 0
+            }
+          } catch (error) {
+            if (error.response?.status === 404) {
+              console.warn(`API endpoint not implemented: getUsersInterestedInItems for event ${event._id}`)
+              console.warn('Interested counts will show 0 until backend implements this endpoint')
+              this.interestedUsersCount[event._id] = 0
+            } else {
+              console.error(`Error loading interested count for event ${event._id}:`, error)
+              this.interestedUsersCount[event._id] = 0
+            }
+          }
+        })
+        
+        await Promise.all(promises)
+        console.log('Interested counts updated:', this.interestedUsersCount)
+        
+      } catch (error) {
+        console.error('Error loading interested users count:', error)
+        // Fallback: initialize all counts to 0
+        for (const event of events) {
+          this.interestedUsersCount[event._id] = 0
+        }
+      }
     },
 
     getInterestedUsersCount(eventId) {
-      return this.interestedUsersCount[eventId] || 0
+      const count = this.interestedUsersCount[eventId] || 0
+      return count
+    },
+
+    // Method for debugging - can be called from browser console
+    async debugRefreshInterestedCounts() {
+      console.log('Debug: Refreshing interested users counts...')
+      console.log('Current userEvents:', this.userEvents)
+      await this.loadInterestedUsersCount(this.userEvents)
+      console.log('Updated interestedUsersCount:', this.interestedUsersCount)
+    },
+
+    // Method to refresh interested counts - can be called manually
+    async refreshInterestedCounts() {
+      if (this.userEvents && this.userEvents.length > 0) {
+        console.log('Refreshing interested counts for events:', this.userEvents.map(e => e._id))
+        await this.loadInterestedUsersCount(this.userEvents)
+      }
+    },
+
+    // Test method to check interested count for a specific event
+    async testInterestedCount(eventId) {
+      console.log(`Testing interested count for event: ${eventId}`)
+      try {
+        const response = await interestAPI.getUsersInterestedInItems(eventId)
+        console.log('API response:', response)
+        console.log('Number of interested users:', response.data ? response.data.length : 0)
+        return response.data ? response.data.length : 0
+      } catch (error) {
+        if (error.response?.status === 404) {
+          console.warn('API endpoint not implemented: getUsersInterestedInItems')
+          console.warn('This endpoint needs to be implemented on the backend')
+          return 0
+        } else {
+          console.error('Error testing interested count:', error)
+          return 0
+        }
+      }
     },
 
     getOrganizerUsername(organizerId) {
@@ -1001,6 +1089,12 @@ export default {
   margin-bottom: 5rem; /* More spacing */
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
 
 .section-header h3 {
   color: #2f3e46; /* Updated color */
@@ -1018,16 +1112,12 @@ export default {
 .search-section {
   margin-bottom: 2rem;
   padding: 0 1rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
   max-width: 1400px;
   margin-left: auto;
   margin-right: auto;
 }
 
 .search-container {
-  flex: 1;
   min-width: 500px;
   max-width: 1200px;
 }
