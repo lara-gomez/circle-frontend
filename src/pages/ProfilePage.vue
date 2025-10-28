@@ -263,7 +263,6 @@
                 </div>
                 <div class="activity-content">
                   <p class="activity-text">{{ activity.text }}</p>
-                  <p class="activity-time">{{ formatTimeAgo(activity.timestamp) }}</p>
                 </div>
               </div>
             </div>
@@ -1083,16 +1082,16 @@ export default {
         
         // Process interested events
         const interestedEvents = interestsResponse.data || []
-        for (const interest of interestedEvents.slice(0, 5)) {
+        for (const interest of interestedEvents.slice(0, 3)) {
           try {
             const eventResponse = await eventAPI.getEventById(interest.item)
             if (eventResponse.data && eventResponse.data.length > 0) {
               const event = eventResponse.data[0]
+              
               activities.push({
                 id: `interested-${interest._id}`,
                 type: 'interested',
                 text: `Marked "${event.name}" as interested`,
-                timestamp: new Date(interest.createdAt || Date.now()),
                 eventId: event._id
               })
             }
@@ -1103,18 +1102,18 @@ export default {
         
         // Process reviews
         const reviews = reviewsResponse.data || []
-        for (const reviewData of reviews.slice(0, 5)) {
+        for (const reviewData of reviews.slice(0, 3)) {
           const review = reviewData.review
           if (review) {
             try {
               const eventResponse = await eventAPI.getEventById(review.target)
               if (eventResponse.data && eventResponse.data.length > 0) {
                 const event = eventResponse.data[0]
+                
                 activities.push({
                   id: `review-${review.id}`,
                   type: 'review',
                   text: `Reviewed "${event.name}" with ${review.rating} stars`,
-                  timestamp: new Date(review.createdAt || Date.now()),
                   eventId: event._id
                 })
               }
@@ -1124,34 +1123,30 @@ export default {
           }
         }
         
-        // Process created events
+        // Process created events (most recent first)
         const createdEvents = eventsResponse.data || []
         for (const event of createdEvents.slice(0, 5)) {
           activities.push({
             id: `created-${event._id}`,
             type: 'created',
             text: `Created event "${event.name}"`,
-            timestamp: new Date(event.createdAt || event.date || Date.now()),
             eventId: event._id
           })
         }
         
-        // Process friend connections (recent accepted friends)
+        // Process friend connections
         const friends = friendsResponse.data || []
         for (const friend of friends.slice(0, 3)) {
           activities.push({
             id: `friend-${friend.friend}`,
             type: 'friend',
             text: `Connected with a new friend`,
-            timestamp: new Date(friend.createdAt || Date.now()),
             friendId: friend.friend
           })
         }
         
-        // Sort by timestamp (most recent first) and limit to 10 items
-        this.recentActivity = activities
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, 10)
+        // Limit to 10 items (no sorting since no timestamps)
+        this.recentActivity = activities.slice(0, 10)
         
         console.log('Loaded recent activity:', this.recentActivity.length, 'items')
         
@@ -1165,21 +1160,6 @@ export default {
     
     async refreshActivity() {
       await this.loadRecentActivity()
-    },
-    
-    formatTimeAgo(timestamp) {
-      const now = new Date()
-      const diff = now - timestamp
-      const minutes = Math.floor(diff / 60000)
-      const hours = Math.floor(diff / 3600000)
-      const days = Math.floor(diff / 86400000)
-      
-      if (minutes < 1) return 'Just now'
-      if (minutes < 60) return `${minutes}m ago`
-      if (hours < 24) return `${hours}h ago`
-      if (days < 7) return `${days}d ago`
-      
-      return timestamp.toLocaleDateString()
     },
   }
 }
