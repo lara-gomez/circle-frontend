@@ -4,6 +4,8 @@ A modern event discovery and community-building platform that helps users find a
 
 [User Journey + Demo](/user-journey.md)
 
+[Visual Design Study](/visual-design-study.pdf)
+
 ## Features
 
 ### 🎯 Core Functionality
