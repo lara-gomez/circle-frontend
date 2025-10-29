@@ -6,6 +6,6 @@ Our user is a recently graduated college student who has just moved to Redmond, 
 
 ## Screen Recording
 
-[![User Journey Screen Recording](user-journey-screen-record-copy.mp4)](user-journey-screen-record-copy.mp4)
+[![User Journey Screen Recording](user-journey-screen-record.mp4)](user-journey-screen-record.mp4)
 
 Click the video above to view the user journey demonstration.
