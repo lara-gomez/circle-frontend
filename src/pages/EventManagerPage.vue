@@ -600,6 +600,7 @@ export default {
         
         // Remove from local list
         this.interestedEvents = this.interestedEvents.filter(event => event._id !== eventId)
+        window.dispatchEvent(new CustomEvent('circle-events-updated'))
       } catch (error) {
         console.error('Error removing interest:', error)
         alert('Failed to remove interest. Please try again.')
@@ -891,6 +892,7 @@ export default {
         } else {
           this.closeEventModal();
           await this.loadEvents();
+          window.dispatchEvent(new CustomEvent('circle-events-updated'))
         }
       } catch (error) {
         console.error('Error saving event:', error)
@@ -907,6 +909,7 @@ export default {
           await this.loadEvents()
           // Also reload interested events to update status in interested list
           await this.loadInterestedEvents()
+          window.dispatchEvent(new CustomEvent('circle-events-updated'))
         } catch (error) {
           console.error('Error cancelling event:', error)
           alert('Error cancelling event. Please try again.')
@@ -921,6 +924,7 @@ export default {
           await this.loadEvents()
           // Also reload interested events to update status in interested list
           await this.loadInterestedEvents()
+          window.dispatchEvent(new CustomEvent('circle-events-updated'))
         } catch (error) {
           console.error('Error uncancelling event:', error)
           alert(error.response?.data?.error || 'Error uncancelling event. Please try again.')
@@ -935,6 +939,7 @@ export default {
           await this.loadEvents()
           // Also reload interested events in case the deleted event was in the interested list
           await this.loadInterestedEvents()
+          window.dispatchEvent(new CustomEvent('circle-events-updated'))
         } catch (error) {
           console.error('Error deleting event:', error)
           alert('Error deleting event. Please try again.')

@@ -129,6 +129,10 @@ export default {
     await this.loadFriends()
     await this.loadRecommendedEvents()
     await this.loadRecentEvent()
+    window.addEventListener('circle-events-updated', this.onExternalEventsUpdated)
+  },
+  beforeUnmount() {
+    window.removeEventListener('circle-events-updated', this.onExternalEventsUpdated)
   },
   methods: {
     async initializeUser() {
@@ -476,6 +480,15 @@ export default {
     
     async refreshEvents() {
       await this.loadRecommendedEvents()
+    },
+    async onExternalEventsUpdated() {
+      try {
+        console.log('External event update detected - refreshing discovery events')
+        await this.loadFriends()
+        await this.loadRecommendedEvents()
+      } catch (error) {
+        console.error('Error refreshing events after external update:', error)
+      }
     },
 
     // Debug method to manually refresh friends attending data
