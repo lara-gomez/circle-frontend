@@ -4,6 +4,7 @@ import { authAPI } from '../api/services.js'
 // Global auth state
 const isAuthenticated = ref(false)
 const user = ref(null)
+const session = ref(null)
 const loading = ref(false)
 
 export function useAuth() {
@@ -12,16 +13,26 @@ export function useAuth() {
     try {
       const storedAuth = localStorage.getItem('isAuthenticated')
       const storedUser = localStorage.getItem('user')
+      const storedSession = localStorage.getItem('session')
       
       console.log('initAuth - storedAuth:', storedAuth)
       console.log('initAuth - storedUser:', storedUser)
       
       // Check if we have valid data before parsing
-      if (storedAuth === 'true' && storedUser && storedUser !== 'undefined' && storedUser.trim() !== '') {
+      if (
+        storedAuth === 'true' &&
+        storedUser &&
+        storedSession &&
+        storedUser !== 'undefined' &&
+        storedUser.trim() !== '' &&
+        storedSession.trim() !== ''
+      ) {
         console.log('initAuth - Setting authenticated state')
         isAuthenticated.value = true
         user.value = JSON.parse(storedUser)
+        session.value = storedSession
         console.log('initAuth - User set:', user.value)
+        console.log('initAuth - Session set:', session.value)
       } else {
         console.log('initAuth - Not authenticated (missing or invalid data)')
         
@@ -31,6 +42,7 @@ export function useAuth() {
           localStorage.removeItem('isAuthenticated')
           localStorage.removeItem('user')
           localStorage.removeItem('registrationDate')
+          localStorage.removeItem('session')
         }
       }
     } catch (error) {
@@ -38,8 +50,10 @@ export function useAuth() {
       // Clear potentially corrupted data
       localStorage.removeItem('isAuthenticated')
       localStorage.removeItem('user')
+      localStorage.removeItem('session')
       isAuthenticated.value = false
       user.value = null
+      session.value = null
     }
   }
 
@@ -47,49 +61,42 @@ export function useAuth() {
   const login = async (username, password) => {
     loading.value = true
     try {
-      const response = await authAPI.authenticate(username, password)
+      const response = await authAPI.login(username, password)
       console.log('Login - Response:', response)
       console.log('Login - Response data:', response.data)
-      
-      const userData = response.data.user
-      console.log('Login - User data:', userData)
-      
-      // Validate userData before storing
-      if (!userData) {
-        console.error('Login - No user data in response')
-        throw new Error('No user data received from server')
+
+      const sessionId = response.data?.session
+      if (!sessionId || typeof sessionId !== 'string') {
+        console.error('Login - Invalid session in response:', response.data)
+        throw new Error('Invalid session received from server')
       }
-      
-      // Normalize user ID - extract ID from object or use string directly
-      let userId = null
-      if (typeof userData === 'string') {
-        userId = userData
-      } else if (typeof userData === 'object' && userData !== null) {
-        userId = userData.id || userData._id || userData.user || null
+
+      const sessionUserResponse = await authAPI.getSessionUser(sessionId)
+      console.log('Login - Session user response:', sessionUserResponse)
+
+      const sessionUser = sessionUserResponse.data?.[0]?.user || sessionUserResponse.data?.user
+      if (!sessionUser || typeof sessionUser !== 'string') {
+        console.error('Login - Could not resolve user from session:', sessionUserResponse.data)
+        throw new Error('Failed to resolve user from session')
       }
-      
-      if (!userId) {
-        console.error('Login - Could not extract user ID from:', userData)
-        throw new Error('Invalid user data format received from server')
-      }
-      
-      console.log('Login - Normalized user ID:', userId)
-      
-      // Update state - store only the user ID
+
+      // Update state
       isAuthenticated.value = true
-      user.value = userId
-      
+      user.value = sessionUser
+      session.value = sessionId
+
       // Store in localStorage
       localStorage.setItem('isAuthenticated', 'true')
-      localStorage.setItem('user', JSON.stringify(userId))
-      console.log('Login - User stored in localStorage')
-      
+      localStorage.setItem('user', JSON.stringify(sessionUser))
+      localStorage.setItem('session', sessionId)
+      console.log('Login - Session stored in localStorage')
+
       // Preserve registration date if it exists, otherwise set it to now
       if (!localStorage.getItem('registrationDate')) {
         localStorage.setItem('registrationDate', new Date().toISOString())
       }
-      
-      return userId
+
+      return sessionUser
     } catch (error) {
       throw error
     } finally {
@@ -104,44 +111,20 @@ export function useAuth() {
       const response = await authAPI.register(username, password)
       console.log('Register - Response:', response)
       console.log('Register - Response data:', response.data)
-      
-      const userData = response.data.user
-      console.log('Register - User data:', userData)
-      
-      // Validate userData before storing
-      if (!userData) {
+
+      const registeredUser = response.data?.user
+      if (!registeredUser) {
         console.error('Register - No user data in response')
         throw new Error('No user data received from server')
       }
-      
-      // Normalize user ID - extract ID from object or use string directly
-      let userId = null
-      if (typeof userData === 'string') {
-        userId = userData
-      } else if (typeof userData === 'object' && userData !== null) {
-        userId = userData.id || userData._id || userData.user || null
-      }
-      
-      if (!userId) {
-        console.error('Register - Could not extract user ID from:', userData)
-        throw new Error('Invalid user data format received from server')
-      }
-      
-      console.log('Register - Normalized user ID:', userId)
-      
-      // Update state - store only the user ID
-      isAuthenticated.value = true
-      user.value = userId
-      
-      // Store in localStorage
-      localStorage.setItem('isAuthenticated', 'true')
-      localStorage.setItem('user', JSON.stringify(userId))
-      console.log('Register - User stored in localStorage')
-      
+
+      // Automatically sign in after successful registration
+      await login(username, password)
+
       // Store registration date
       localStorage.setItem('registrationDate', new Date().toISOString())
-      
-      return userId
+
+      return registeredUser
     } catch (error) {
       throw error
     } finally {
@@ -150,14 +133,24 @@ export function useAuth() {
   }
 
   // Logout function
-  const logout = () => {
-    isAuthenticated.value = false
-    user.value = null
-    
-    // Clear all auth-related localStorage data
-    localStorage.removeItem('isAuthenticated')
-    localStorage.removeItem('user')
-    localStorage.removeItem('registrationDate')
+  const logout = async () => {
+    try {
+      if (session.value) {
+        await authAPI.logout(session.value)
+      }
+    } catch (error) {
+      console.error('Error during logout:', error)
+    } finally {
+      isAuthenticated.value = false
+      user.value = null
+      session.value = null
+      
+      // Clear all auth-related localStorage data
+      localStorage.removeItem('isAuthenticated')
+      localStorage.removeItem('user')
+      localStorage.removeItem('registrationDate')
+      localStorage.removeItem('session')
+    }
   }
 
   // Get user info
@@ -175,6 +168,7 @@ export function useAuth() {
 
   // Computed properties
   const currentUser = computed(() => user.value)
+  const currentSession = computed(() => session.value)
   const isLoggedIn = computed(() => isAuthenticated.value)
   const isLoading = computed(() => loading.value)
 
@@ -183,6 +177,7 @@ export function useAuth() {
     isAuthenticated: isLoggedIn,
     user: currentUser,
     loading: isLoading,
+    session: currentSession,
     
     // Methods
     initAuth,

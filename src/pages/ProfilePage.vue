@@ -519,7 +519,7 @@ export default {
         console.log('Making API calls for stats...')
         const [friendsResponse, interestsResponse, reviewsResponse, eventsResponse] = await Promise.all([
           friendingAPI.getFriends(userId).catch((err) => { console.error('Friends API error:', err); return { data: [] } }),
-          interestAPI.getItemInterests(userId).catch((err) => { console.error('Interests API error:', err); return { data: [] } }),
+          interestAPI.getItemInterests().catch((err) => { console.error('Interests API error:', err); return { data: [] } }),
           reviewingAPI.getReviewsByUser(userId).catch((err) => { console.error('Reviews API error:', err); return { data: [] } }),
           eventAPI.getEventsByOrganizer(userId).catch((err) => { console.error('Events API error:', err); return { data: [] } })
         ])
@@ -527,11 +527,11 @@ export default {
         console.log('All API responses received')
         
         // Count friends (accepted friends only)
-        const friends = friendsResponse.data || []
-        this.stats.friendsCount = friends.filter(friend => friend.status === 'accepted').length
+        const friends = friendsResponse.data?.results || friendsResponse.data || []
+        this.stats.friendsCount = friends.length
         
         // Count events attended (interested events that have passed their end time)
-        const interestedItems = interestsResponse.data || []
+        const interestedItems = interestsResponse.data?.results || interestsResponse.data || []
         const interestedEventIds = interestedItems.map(item => item.item)
         
         if (interestedEventIds.length > 0) {
@@ -543,7 +543,7 @@ export default {
           const now = new Date()
           const events = eventResponses
             .filter(response => response !== null && response.data)
-            .map(response => response.data[0])
+            .map(response => response.data?.event)
             .filter(event => {
               if (!event || !event.date || !event.duration) return false
               
@@ -564,7 +564,7 @@ export default {
         this.stats.reviewsWritten = reviews.length
         
         // Count events created
-        const createdEvents = eventsResponse.data || []
+        const createdEvents = eventsResponse.data?.results || eventsResponse.data || []
         this.stats.eventsCreated = createdEvents.length
         
         console.log('Events created response:', eventsResponse)
@@ -597,7 +597,7 @@ export default {
           reviews.map(async (review) => {
             try {
               const eventResponse = await eventAPI.getEventById(review.target)
-              const event = eventResponse.data?.[0]
+              const event = eventResponse.data?.event
               return {
                 ...review,
                 eventName: event?.name || 'Unknown Event'
@@ -631,8 +631,8 @@ export default {
         }
         console.log('Loading interests - User object:', this.user)
         console.log('Loading interests - User ID:', userId)
-        const response = await interestAPI.getPersonalInterests(userId)
-        const interestsData = response.data || []
+        const response = await interestAPI.getPersonalInterests()
+        const interestsData = response.data?.results || response.data || []
         
         // Extract interest names if they're objects, otherwise use as strings
         this.interests = interestsData.map(interest => {
@@ -665,7 +665,7 @@ export default {
         console.log('Friends response:', friendsResponse)
         console.log('Friends data:', friendsResponse.data)
         
-        const rawFriends = friendsResponse.data || []
+        const rawFriends = friendsResponse.data?.results || friendsResponse.data || []
         
         // Fetch usernames for each friend
         this.acceptedFriends = await Promise.all(
@@ -707,7 +707,7 @@ export default {
         console.log('Incoming requests response:', requestsResponse)
         console.log('Incoming requests data:', requestsResponse.data)
         
-        const rawPendingRequests = requestsResponse.data || []
+        const rawPendingRequests = requestsResponse.data?.results || requestsResponse.data || []
         
         // Fetch usernames for each requester
         this.pendingRequests = await Promise.all(
@@ -747,7 +747,7 @@ export default {
         console.log('Outgoing requests response:', outgoingResponse)
         console.log('Outgoing requests data:', outgoingResponse.data)
         
-        const rawOutgoingRequests = outgoingResponse.data || []
+        const rawOutgoingRequests = outgoingResponse.data?.results || outgoingResponse.data || []
         
         // Fetch usernames for each target user
         this.outgoingRequests = await Promise.all(
@@ -868,10 +868,7 @@ export default {
         }
         
         // Now send the friend request with user IDs
-        await friendingAPI.sendFriendRequest(
-          userId,
-          targetUserId
-        )
+        await friendingAPI.sendFriendRequest(targetUsername)
         
         console.log('Friend request sent successfully')
         this.closeAddFriendModal()
@@ -908,10 +905,7 @@ export default {
         console.log('Accepting friend request - Requester ID:', requestId)
         console.log('Accepting friend request - Target ID (current user):', userId)
         
-        await friendingAPI.acceptFriendRequest(
-          requestId,
-          userId
-        )
+        await friendingAPI.acceptFriendRequest(requestId)
         
         console.log('Friend request accepted successfully')
         
@@ -973,10 +967,7 @@ export default {
         if (!userId) {
           throw new Error('User not authenticated')
         }
-        await friendingAPI.removeFriend(
-          userId,
-          friendId
-        )
+        await friendingAPI.removeFriend(friendId)
         
         // Reload friends data and stats
         await this.loadFriendsData()
@@ -1018,10 +1009,7 @@ export default {
         }
           console.log('Adding interest - User object:', this.user)
           console.log('Adding interest - User ID:', userId)
-          await interestAPI.addPersonalInterest(
-            userId,
-            this.newInterest.trim()
-          )
+          await interestAPI.addPersonalInterest(this.newInterest.trim())
           
           this.interests.push(this.newInterest.trim())
           this.newInterest = ''
@@ -1043,10 +1031,7 @@ export default {
         if (!userId) {
           throw new Error('User not authenticated')
         }
-          await interestAPI.removePersonalInterest(
-            userId,
-            interest
-          )
+          await interestAPI.removePersonalInterest(interest)
           
           this.interests.splice(index, 1)
           // Refresh stats after removing interest
@@ -1072,7 +1057,7 @@ export default {
         
         // Load different types of activity in parallel
         const [interestsResponse, reviewsResponse, eventsResponse, friendsResponse] = await Promise.all([
-          interestAPI.getItemInterests(userId).catch(() => ({ data: [] })),
+          interestAPI.getItemInterests().catch(() => ({ data: [] })),
           reviewingAPI.getReviewsByUser(userId).catch(() => ({ data: [] })),
           eventAPI.getEventsByOrganizer(userId).catch(() => ({ data: [] })),
           friendingAPI.getFriends(userId).catch(() => ({ data: [] }))
@@ -1081,12 +1066,12 @@ export default {
         const activities = []
         
         // Process interested events
-        const interestedEvents = interestsResponse.data || []
+        const interestedEvents = interestsResponse.data?.results || interestsResponse.data || []
         for (const interest of interestedEvents.slice(0, 3)) {
           try {
             const eventResponse = await eventAPI.getEventById(interest.item)
-            if (eventResponse.data && eventResponse.data.length > 0) {
-              const event = eventResponse.data[0]
+            const event = eventResponse.data?.event
+            if (event) {
               
               activities.push({
                 id: `interested-${interest._id}`,
@@ -1107,8 +1092,8 @@ export default {
           if (review) {
             try {
               const eventResponse = await eventAPI.getEventById(review.target)
-              if (eventResponse.data && eventResponse.data.length > 0) {
-                const event = eventResponse.data[0]
+              const event = eventResponse.data?.event
+              if (event) {
                 
                 activities.push({
                   id: `review-${review.id}`,
@@ -1124,7 +1109,7 @@ export default {
         }
         
         // Process created events (most recent first)
-        const createdEvents = eventsResponse.data || []
+        const createdEvents = eventsResponse.data?.results || eventsResponse.data || []
         for (const event of createdEvents.slice(0, 5)) {
           activities.push({
             id: `created-${event._id}`,
@@ -1135,7 +1120,7 @@ export default {
         }
         
         // Process friend connections
-        const friends = friendsResponse.data || []
+        const friends = friendsResponse.data?.results || friendsResponse.data || []
         for (const friend of friends.slice(0, 3)) {
           activities.push({
             id: `friend-${friend.friend}`,

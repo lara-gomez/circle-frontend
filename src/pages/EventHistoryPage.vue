@@ -262,9 +262,9 @@ export default {
       try {
         // Get user's interested events (same logic as EventManagerPage)
         console.log('EventHistoryPage - Getting interests for user:', this.currentUser)
-        const interestsResponse = await interestAPI.getItemInterests(this.currentUser)
+        const interestsResponse = await interestAPI.getItemInterests()
         console.log('EventHistoryPage - Interests response:', interestsResponse)
-        const interestedItems = interestsResponse.data || []
+        const interestedItems = interestsResponse.data?.results || interestsResponse.data || []
         console.log('EventHistoryPage - Interested items:', interestedItems)
         
         if (interestedItems.length === 0) {
@@ -287,8 +287,8 @@ export default {
         
         // Filter out null responses and extract events
         const allInterestedEvents = eventResponses
-          .filter(response => response !== null && response.data && response.data[0])
-          .map(response => response.data[0])
+          .filter(response => response !== null && response.data)
+          .map(response => response.data?.event)
           .filter(event => event && event._id) // Ensure each event is valid
 
         // Filter for events that have passed their end time (regardless of status)
@@ -433,7 +433,6 @@ export default {
         if (this.editingEvent.review) {
           // Update existing review
           await reviewingAPI.modifyReview(
-            this.currentUser,
             this.editingEvent._id,
             this.reviewForm.rating,
             this.reviewForm.entry
@@ -441,7 +440,6 @@ export default {
         } else {
           // Create new review
           await reviewingAPI.addReview(
-            this.currentUser,
             this.editingEvent._id,
             this.reviewForm.rating,
             this.reviewForm.entry
@@ -467,7 +465,7 @@ export default {
       if (confirm(`Did you not attend "${event.name}"? This will remove it from your event history.`)) {
         try {
           // Remove the user's interest in this event
-          await interestAPI.removeItemInterest(this.currentUser, event._id)
+          await interestAPI.removeItemInterest(event._id)
           
           // Remove from local list
           this.pastEvents = this.pastEvents.filter(e => e._id !== event._id)
@@ -489,7 +487,7 @@ export default {
       
       try {
         console.log('Deleting review for event:', event._id)
-        await reviewingAPI.removeReview(this.currentUser, event._id)
+        await reviewingAPI.removeReview(event._id)
         
         // Remove the review from the local event object
         const eventIndex = this.pastEvents.findIndex(e => e._id === event._id)

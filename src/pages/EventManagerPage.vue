@@ -504,7 +504,7 @@ export default {
         console.log('EventManagerPage - User object:', this.user)
         const response = await eventAPI.getEventsByOrganizer(this.currentUser)
         console.log('EventManagerPage - Events response:', response)
-        this.userEvents = response.data || []
+        this.userEvents = response.data?.results || response.data || []
         
         // Load organizer usernames for user events
         await this.loadOrganizerUsernames(this.userEvents)
@@ -533,10 +533,10 @@ export default {
       try {
         // Get user's item interests (event IDs)
         console.log('EventManagerPage - Getting interests for user:', this.currentUser)
-        const interestsResponse = await interestAPI.getItemInterests(this.currentUser)
+        const interestsResponse = await interestAPI.getItemInterests()
         console.log('EventManagerPage - Interests response:', interestsResponse)
         
-        const interestedItems = interestsResponse.data || []
+        const interestedItems = interestsResponse.data?.results || interestsResponse.data || []
         
         if (interestedItems.length === 0) {
           console.log('✅ No interested items found, setting empty array and stopping loading')
@@ -560,8 +560,8 @@ export default {
         
         // Filter out null responses and extract events
         const allInterestedEvents = eventResponses
-          .filter(response => response !== null && response.data && response.data[0])
-          .map(response => response.data[0])
+          .filter(response => response !== null && response.data)
+          .map(response => response.data?.event)
           .filter(event => event && event._id) // Ensure each event has an _id
 
         // Filter out completed events - only show upcoming/in-progress events
@@ -596,7 +596,7 @@ export default {
     async removeInterest(eventId) {
       this.processingInterest = eventId
       try {
-        await interestAPI.removeItemInterest(this.currentUser, eventId)
+        await interestAPI.removeItemInterest(eventId)
         
         // Remove from local list
         this.interestedEvents = this.interestedEvents.filter(event => event._id !== eventId)
@@ -733,9 +733,10 @@ export default {
           try {
             const response = await interestAPI.getUsersInterestedInItems(event._id)
             
-            if (response.data && Array.isArray(response.data)) {
-              this.interestedUsersCount[event._id] = response.data.length
-              console.log(`Event ${event._id}: ${response.data.length} interested`)
+            const results = response.data?.results || response.data || []
+            if (Array.isArray(results)) {
+              this.interestedUsersCount[event._id] = results.length
+              console.log(`Event ${event._id}: ${results.length} interested`)
             } else {
               this.interestedUsersCount[event._id] = 0
             }
@@ -790,8 +791,9 @@ export default {
       try {
         const response = await interestAPI.getUsersInterestedInItems(eventId)
         console.log('API response:', response)
-        console.log('Number of interested users:', response.data ? response.data.length : 0)
-        return response.data ? response.data.length : 0
+        const results = response.data?.results || response.data || []
+        console.log('Number of interested users:', Array.isArray(results) ? results.length : 0)
+        return Array.isArray(results) ? results.length : 0
       } catch (error) {
         if (error.response?.status === 404) {
           console.warn('API endpoint not implemented: getUsersInterestedInItems')
@@ -883,9 +885,9 @@ export default {
 
         console.log("API response:", result);
 
-        if ('error' in result) {
+        if (result.data?.error) {
           // Show backend validation errors
-          alert(`Error saving event: ${result.error}`);
+          alert(`Error saving event: ${result.data.error}`);
         } else {
           this.closeEventModal();
           await this.loadEvents();

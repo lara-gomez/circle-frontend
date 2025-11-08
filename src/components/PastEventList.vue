@@ -103,10 +103,13 @@ export default {
         // Get event details for each reviewed event
         const eventsWithReviews = []
         for (const reviewData of reviews) {
-          const review = reviewData.review
+          const review = reviewData.review || reviewData
+          if (!review || !review.target) {
+            continue
+          }
           try {
             const eventResponse = await eventAPI.getEventById(review.target)
-            const event = eventResponse.data[0]
+            const event = eventResponse.data?.event
             if (event) {
               eventsWithReviews.push({
                 ...event,

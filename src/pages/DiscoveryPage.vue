@@ -147,8 +147,9 @@ export default {
       this.loading = true
       try {
         // Get user's personal interests for filtering
-        const userInterestsResponse = await interestAPI.getPersonalInterests(this.currentUser)
-        const userInterests = (userInterestsResponse.data || []).map(item => item.tag || item.name || item)
+        const userInterestsResponse = await interestAPI.getPersonalInterests()
+        const personalInterestResults = userInterestsResponse.data?.results || userInterestsResponse.data || []
+        const userInterests = personalInterestResults.map(item => item.tag || item.name || item)
         
         console.log('User interests:', userInterests)
         
@@ -157,23 +158,26 @@ export default {
         const filtersStr = userInterests.join(',')
         const prioritiesStr = 'upcoming'
         
-        console.log('Calling recommendation API with:', {
-          user: this.currentUser,
-          filters: filtersStr,
-          priorities: prioritiesStr
-        })
-        
-        const recommendationResponse = await eventAPI.getEventsByRecommendationContext(
-          this.currentUser,
-          filtersStr,
-          prioritiesStr
-        )
-        
-        const recommendedEventsData = recommendationResponse.data || []
+        let recommendedEventsData = []
+        if (filtersStr.trim().length > 0) {
+          console.log('Calling recommendation API with:', {
+            filters: filtersStr,
+            priorities: prioritiesStr
+          })
+
+          const recommendationResponse = await eventAPI.getEventsByRecommendationContext(
+            filtersStr,
+            prioritiesStr
+          )
+
+          recommendedEventsData = recommendationResponse.data?.results || recommendationResponse.data || []
+        } else {
+          console.log('No personal interests found; skipping recommendation request')
+        }
         
         // Load all upcoming events
         const allEventsResponse = await eventAPI.getEventsByStatus('upcoming')
-        const allEventsData = allEventsResponse.data || []
+        const allEventsData = allEventsResponse.data?.results || allEventsResponse.data || []
         
         // Filter out events that have passed their end time
         const now = new Date()
@@ -205,9 +209,24 @@ export default {
         console.log('All other events:', this.allEvents.length)
       } catch (error) {
         console.error('Error loading events:', error)
-        // Keep empty array on error
-        this.recommendedEvents = []
-        this.allEvents = []
+        // Fallback: attempt to load all upcoming events even if recommendations fail
+        try {
+          const fallbackResponse = await eventAPI.getEventsByStatus('upcoming')
+          const fallbackData = fallbackResponse.data?.results || fallbackResponse.data || []
+          const now = new Date()
+          const filteredFallback = fallbackData.filter(event => {
+            if (!event.date || !event.duration) return true
+            const eventStartTime = new Date(event.date)
+            const eventEndTime = new Date(eventStartTime.getTime() + (event.duration * 60 * 1000))
+            return eventEndTime > now
+          })
+          this.recommendedEvents = []
+          this.allEvents = filteredFallback
+        } catch (fallbackError) {
+          console.error('Error loading fallback events:', fallbackError)
+          this.recommendedEvents = []
+          this.allEvents = []
+        }
       } finally {
         this.loading = false
       }
@@ -218,7 +237,7 @@ export default {
         console.log('Loading friends for user:', this.currentUser)
         const response = await friendingAPI.getFriends(this.currentUser)
         console.log('Raw friends API response:', response)
-        this.friends = response.data || []
+        this.friends = response.data?.results || response.data || []
         console.log('Processed friends array:', this.friends)
       } catch (error) {
         console.error('Error loading friends:', error)
@@ -303,66 +322,48 @@ export default {
         }
 
         // Step 2: Get all friends' interests and usernames in parallel
-        const friendInterestsPromises = allFriends.map(async (friend) => {
-          try {
-            console.log(`Friend object structure:`, friend)
-            const friendId = friend.id || friend._id || friend.friend || friend
-            console.log(`Extracted friend ID: ${friendId}`)
-            
-            // Get friend's interests and username in parallel
-            const [friendInterestsResponse, usernameResponse] = await Promise.all([
-              interestAPI.getItemInterests(friendId),
-              this.fetchFriendUsername(friendId)
-            ])
-            
-            const interests = friendInterestsResponse.data || []
-            const username = usernameResponse || friendId
-            console.log(`📊 Friend ${friendId} interests:`, interests)
-            console.log(`👤 Friend ${friendId} username:`, username)
-            console.log(`🔧 Creating friend object:`, { id: friendId, username: username })
-            
-            return {
-              friend: {
-                id: friendId,
-                username: username
-              },
-              interestedEvents: interests.map(interest => interest.item)
-            }
-          } catch (error) {
-            console.error(`Error getting interests for friend:`, error)
-            const friendId = friend.id || friend._id || friend.friend || friend
-            return {
-              friend: {
-                id: friendId,
-                username: friendId // fallback to ID if username fetch fails
-              },
-              interestedEvents: []
-            }
-          }
-        })
+        // Step 2: Extract friend IDs and fetch usernames once
+        const friendIds = allFriends.map(friend => friend.id || friend._id || friend.friend || friend)
+        const uniqueFriendIds = Array.from(new Set(friendIds.filter(Boolean)))
 
-        const friendInterestsResults = await Promise.all(friendInterestsPromises)
+        const friendUsernames = await Promise.all(
+          uniqueFriendIds.map(async (friendId) => {
+            const username = await this.fetchFriendUsername(friendId)
+            return { id: friendId, username }
+          })
+        )
 
-        // Step 3: Build efficient mapping of eventId → friends attending
+        const friendLookup = new Map(friendUsernames.map(({ id, username }) => [id, username || id]))
+
+        // Step 3: Initialize mapping for all visible events
         this.friendsAttendingMap = {}
-        
-        // Initialize all events with empty arrays
-        this.recommendedEvents.concat(this.allEvents).forEach(event => {
+        const allVisibleEvents = this.recommendedEvents.concat(this.allEvents)
+        allVisibleEvents.forEach(event => {
           this.friendsAttendingMap[event._id] = []
         })
 
-        // Build the mapping efficiently
-        friendInterestsResults.forEach(({ friend, interestedEvents }) => {
-          console.log(`Processing friend ${friend.username} (${friend.id}) with ${interestedEvents.length} interested events:`, interestedEvents)
-          interestedEvents.forEach(eventId => {
-            if (this.friendsAttendingMap.hasOwnProperty(eventId)) {
-              this.friendsAttendingMap[eventId].push(friend)
-              console.log(`Added friend ${friend.username} to event ${eventId}`)
-            } else {
-              console.log(`Event ${eventId} not found in friendsAttendingMap`)
-            }
-          })
+        // Step 4: Fetch interested users for each event
+        const interestedPromises = allVisibleEvents.map(async (event) => {
+          try {
+            const response = await interestAPI.getUsersInterestedInItems(event._id)
+            const interestedResults = response.data?.results || response.data || []
+
+            const friendMatches = interestedResults
+              .map(entry => entry.user || entry.id || entry)
+              .filter(id => friendLookup.has(id))
+              .map(id => ({
+                id,
+                username: friendLookup.get(id)
+              }))
+
+            this.friendsAttendingMap[event._id] = friendMatches
+          } catch (error) {
+            console.error(`Error fetching interested users for event ${event._id}:`, error)
+            this.friendsAttendingMap[event._id] = []
+          }
         })
+
+        await Promise.all(interestedPromises)
 
         console.log('Friends attending map:', this.friendsAttendingMap)
 
@@ -384,8 +385,8 @@ export default {
 
     async loadUserInterests() {
       try {
-        const response = await interestAPI.getItemInterests(this.currentUser)
-        this.userInterests = response.data || []
+        const response = await interestAPI.getItemInterests()
+        this.userInterests = response.data?.results || response.data || []
       } catch (error) {
         console.error('Error loading user interests:', error)
         this.userInterests = []
@@ -400,7 +401,7 @@ export default {
         if (reviews.length > 0) {
           const mostRecentReview = reviews[0].review
           const eventResponse = await eventAPI.getEventById(mostRecentReview.target)
-          const event = eventResponse.data[0]
+          const event = eventResponse.data?.event
           if (event) {
             this.recentEvent = { ...event, review: mostRecentReview }
           }
@@ -417,49 +418,34 @@ export default {
       // This function is now primarily used as a fallback or for single event queries
       // The main optimization is in loadFriendsAttendingData()
       try {
-        // Get all friends
         const friendsResponse = await friendingAPI.getFriends(this.currentUser)
-        const allFriends = friendsResponse.data || []
-        
+        const allFriends = friendsResponse.data?.results || friendsResponse.data || []
+
         if (allFriends.length === 0) {
           return []
         }
 
-        // Get all friends' interests in parallel
-        const friendInterestsPromises = allFriends.map(async (friend) => {
-          try {
-            const friendInterestsResponse = await interestAPI.getItemInterests(friend.id || friend._id)
-            const interests = friendInterestsResponse.data || []
-            return {
-              friend: {
-                id: friend.id || friend._id,
-                username: friend.username || friend.name
-              },
-              interestedEvents: interests.map(interest => interest.item)
-            }
-          } catch (error) {
-            console.error(`Error getting interests for friend ${friend.username}:`, error)
-            return {
-              friend: {
-                id: friend.id || friend._id,
-                username: friend.username || friend.name
-              },
-              interestedEvents: []
-            }
-          }
-        })
+        const friendIds = allFriends.map(friend => friend.id || friend._id || friend.friend || friend)
+        const uniqueFriendIds = Array.from(new Set(friendIds.filter(Boolean)))
 
-        const friendInterestsResults = await Promise.all(friendInterestsPromises)
+        const friendUsernames = await Promise.all(
+          uniqueFriendIds.map(async (friendId) => {
+            const username = await this.fetchFriendUsername(friendId)
+            return { id: friendId, username }
+          })
+        )
+        const friendLookup = new Map(friendUsernames.map(({ id, username }) => [id, username || id]))
 
-        // Find friends interested in this specific event
-        const friendsInterestedInEvent = []
-        friendInterestsResults.forEach(({ friend, interestedEvents }) => {
-          if (interestedEvents.includes(eventId)) {
-            friendsInterestedInEvent.push(friend)
-          }
-        })
+        const response = await interestAPI.getUsersInterestedInItems(eventId)
+        const interestedResults = response.data?.results || response.data || []
 
-        return friendsInterestedInEvent
+        return interestedResults
+          .map(entry => entry.user || entry.id || entry)
+          .filter(id => friendLookup.has(id))
+          .map(id => ({
+            id,
+            username: friendLookup.get(id)
+          }))
       } catch (error) {
         console.error('Error getting friends attending:', error)
         // Fallback to mock data
@@ -511,14 +497,14 @@ export default {
       try {
         if (isInterested) {
           // Add interest to the event
-          await interestAPI.addItemInterest(this.currentUser, eventId)
+          await interestAPI.addItemInterest(eventId)
           console.log(`Added interest for event ${eventId}`)
           
           // Update local state
           this.userInterests.push({ item: eventId })
         } else {
           // Remove interest from the event
-          await interestAPI.removeItemInterest(this.currentUser, eventId)
+          await interestAPI.removeItemInterest(eventId)
           console.log(`Removed interest for event ${eventId}`)
           
           // Update local state
